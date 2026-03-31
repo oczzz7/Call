@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMIS Call Center - V5 (Vite Build)</title>
+    <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+
+    <header class="topbar">
+        <div class="brand">🎧 EMIS Portal <span class="brand-badge">Call Center</span></div>
+        
+        <div class="global-search">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="searchInput" placeholder="ძებნა სრულ კატალოგში..." oninput="handleSearch()">
+            <div class="search-results" id="searchResults"></div>
+        </div>
+
+        <div class="topbar-actions">
+            <button class="btn-top-stats" onclick="openStatistics()">📊 სტატისტიკა</button>
+            
+            <div class="operator-profile">
+                <select class="op-status-select online" id="opStatus" onchange="changeStatus(this)">
+                    <option value="online">🟢 მზადაა</option>
+                    <option value="break">🟡 შესვენება</option>
+                    <option value="busy">🔴 დაკავებულია</option>
+                </select>
+                <div class="op-info">
+                    <div class="op-name">ნინო ბერიძე</div>
+                    <div class="op-role">უფროსი ოპერატორი</div>
+                </div>
+                <div class="op-avatar">ნბ</div>
+            </div>
+        </div>
+    </header>
+
+    <div class="app-container">
+        <aside class="sidebar" id="mainSidebar">
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('recent', this)">ბოლო ზარები</div>
+                <div class="tab" onclick="switchTab('favorites', this)">⭐ ფავორიტები</div>
+            </div>
+            <ul class="call-list" id="registryList"></ul>
+        </aside>
+
+        <main class="workspace">
+            
+            <div class="workspace-panel active" id="view-dialpad">
+                <div class="softphone-header">ახალი გამავალი ზარი</div>
+                <div class="dial-display" id="dialInput"></div>
+                <div class="numpad">
+                    <button class="num-btn" onclick="addNum('1')">1</button>
+                    <button class="num-btn" onclick="addNum('2')">2</button>
+                    <button class="num-btn" onclick="addNum('3')">3</button>
+                    <button class="num-btn" onclick="addNum('4')">4</button>
+                    <button class="num-btn" onclick="addNum('5')">5</button>
+                    <button class="num-btn" onclick="addNum('6')">6</button>
+                    <button class="num-btn" onclick="addNum('7')">7</button>
+                    <button class="num-btn" onclick="addNum('8')">8</button>
+                    <button class="num-btn" onclick="addNum('9')">9</button>
+                    <button class="num-btn" onclick="addNum('*')">*</button>
+                    <button class="num-btn" onclick="addNum('0')">0</button>
+                    <button class="num-btn" onclick="addNum('#')">#</button>
+                </div>
+                <div class="dial-actions">
+                    <button class="btn-clear" onclick="clearNum()">⌫</button>
+                    <button class="btn-call-large" onclick="manualDial()">📞 დარეკვა</button>
+                    <button class="btn-clear" style="visibility: hidden;">⌫</button>
+                </div>
+            </div>
+
+            <div class="workspace-panel" id="view-call">
+                <div class="caller-avatar" id="callAvatar">👤</div>
+                <h2 class="caller-name" id="callName">გიორგი მაისურაძე</h2>
+                <div class="caller-number" id="callNumber">+995 599 12 34 56</div>
+                <div class="call-status" id="callStatus">მიმდინარეობს საუბარი: 00:00</div>
+                <div class="control-grid" id="callControls">
+                    <button class="ctrl-btn"><div class="ctrl-icon">⏸️</div><span>პაუზა</span></button>
+                    <button class="ctrl-btn"><div class="ctrl-icon">➡️</div><span>გადართვა</span></button>
+                    <button class="ctrl-btn"><div class="ctrl-icon">📞↔️</div><span>კონსულტ.</span></button>
+                    <button class="ctrl-btn"><div class="ctrl-icon">🎤</div><span>Mute</span></button>
+                </div>
+                <button class="btn-end-large" onclick="endCallAndWrapup()">☎ ზარის დასრულება</button>
+            </div>
+
+            <div class="workspace-panel" id="view-wrapup" style="max-width: 650px;">
+                <div class="wrapup-header">
+                    <h2>ზარის დამუშავება</h2>
+                    <button class="jira-btn"><span style="font-size: 16px;">🎫</span> Jira Task</button>
+                </div>
+                <div class="form-card">
+                    <strong id="wrapName" style="font-size: 16px;"></strong> <br>
+                    <span style="color: var(--text-muted); font-size: 13px;" id="wrapDetails"></span>
+                </div>
+                <div class="wrapup-form">
+                    <div class="form-group">
+                        <label>კატეგორია <span style="color: var(--danger);">*</span></label>
+                        <select id="wrapCategory">
+                            <option value="">აირჩიეთ კატეგორია...</option>
+                            <option value="ელექტორნული ჟურნალი">ელექტორნული ჟურნალი</option>
+                            <option value="პირველკლასელთა რეგისტრაცია">პირველკლასელთა რეგისტრაცია</option>
+                            <option value="eschool">eschool</option>
+                            <option value="ანკეტა კითხვარები">ანკეტა კითხვარები</option>
+                            <option value="ინტერნეტის პრობლემა">ინტერნეტის პრობლემა</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>კომენტარი <span style="color: var(--danger);">*</span></label>
+                        <textarea id="wrapComment" placeholder="აღწერეთ პრობლემა..."></textarea>
+                    </div>
+                    <button class="btn-save" onclick="saveRecord()">💾 შენახვა და დასრულება</button>
+                </div>
+            </div>
+
+            <div class="workspace-panel panel-wide" id="view-statistics">
+                <div class="stats-header">
+                    <h2>📊 ანალიტიკა და რეპორტინგი</h2>
+                    <div class="stats-filters">
+                        <select class="filter-select" id="statsPeriod" onchange="updateCharts()">
+                            <option value="all">მთლიანი პერიოდი (ბოლო 30 დღე)</option>
+                            <option value="week">მიმდინარე კვირა</option>
+                            <option value="today">დღეს</option>
+                        </select>
+                        <button class="btn-back" onclick="closeStatistics()">← სამუშაო სივრცეში დაბრუნება</button>
+                    </div>
+                </div>
+
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-title">ჯამური ზარები</div>
+                        <div class="kpi-value" id="kpiTotal">0</div>
+                        <div class="kpi-sub">↑ 12% წინა პერიოდთან შედარებით</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-title">ყველაზე ხშირი პრობლემა</div>
+                        <div class="kpi-value" id="kpiTopCategory" style="font-size: 20px; color: var(--danger); margin-top: 10px;">-</div>
+                        <div class="kpi-sub" style="margin-top: 5px; color: var(--text-muted);" id="kpiTopCount">0 ზარი</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-title">საშუალო ხანგრძლივობა (AHT)</div>
+                        <div class="kpi-value">03:45</div>
+                        <div class="kpi-sub" style="color: var(--warning);">სტაბილური მაჩვენებელი</div>
+                    </div>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="chart-container">
+                        <div class="chart-title">ზარების განაწილება კატეგორიების მიხედვით (TOP 5)</div>
+                        <div class="canvas-wrapper"><canvas id="barChart"></canvas></div>
+                    </div>
+                    <div class="chart-container">
+                        <div class="chart-title">შემომავალი / გამავალი</div>
+                        <div class="canvas-wrapper"><canvas id="pieChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <button class="btn-sim" onclick="simulateIncomingCall()">📞 შემომავალი ზარის იმიტაცია</button>
+    <div class="toast" id="toastMsg"></div>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>
