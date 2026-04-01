@@ -4,10 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-  "dev": "vite",
-  "build": "vite build",
-  "preview": "vite preview"
-},
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -17,6 +17,9 @@
   },
   "dependencies": {
     "chart.js": "^4.5.1",
-    "jssip": "^3.13.6"
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "jssip": "^3.13.6",
+    "sqlite3": "^6.0.1"
   }
 }

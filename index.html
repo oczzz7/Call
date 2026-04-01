@@ -3,164 +3,410 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EMIS Call Center - V5 (Vite Build)</title>
+    <title>EMIS Call Center - Customer 360</title>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
 
-    <header class="topbar">
-        <div class="brand">🎧 EMIS Portal <span class="brand-badge">Call Center</span></div>
-        
-        <div class="global-search">
-            <span class="search-icon">🔍</span>
-            <input type="text" id="searchInput" placeholder="ძებნა სრულ კატალოგში..." oninput="handleSearch()">
-            <div class="search-results" id="searchResults"></div>
-        </div>
-
-        <div class="topbar-actions">
-            <button class="btn-top-stats" onclick="openStatistics()">📊 სტატისტიკა</button>
+    <div id="loginOverlay" class="login-overlay">
+        <div class="login-card">
+            <div class="login-logo">
+                <img src="https://emis.ge/assets/svg/logo-with-name.svg" alt="EMIS Logo" style="height: 50px; margin-bottom: 20px;">
+            </div>
             
-            <div class="operator-profile">
-                <select class="op-status-select online" id="opStatus" onchange="changeStatus(this)">
-                    <option value="online">🟢 მზადაა</option>
-                    <option value="break">🟡 შესვენება</option>
-                    <option value="busy">🔴 დაკავებულია</option>
-                </select>
-                <div class="op-info">
-                    <div class="op-name">ნინო ბერიძე</div>
-                    <div class="op-role">უფროსი ოპერატორი</div>
+            <div class="input-wrapper">
+                <label>სერვერი (WSS URL)</label>
+                <div class="input-box">
+                    <i class="ph ph-globe"></i>
+                    <input type="text" id="sipWss" placeholder="wss://pbx.emis.ge:8089/ws" onkeydown="handleLoginEnter(event)">
                 </div>
-                <div class="op-avatar">ნბ</div>
             </div>
-        </div>
-    </header>
+            
+            <div class="input-wrapper">
+                <label>SIP ნომერი (admin ან ოპერატორი)</label>
+                <div class="input-box">
+                    <i class="ph ph-user"></i>
+                    <input type="text" id="sipExt" placeholder="მაგ: 101 ან admin" onkeydown="handleLoginEnter(event)">
+                </div>
+            </div>
+            
+            <div class="input-wrapper">
+                <label>პაროლი</label>
+                <div class="input-box">
+                    <i class="ph ph-lock-key"></i>
+                    <input type="password" id="sipPass" placeholder="••••••••" onkeydown="handleLoginEnter(event)">
+                </div>
+            </div>
 
-    <div class="app-container">
-        <aside class="sidebar" id="mainSidebar">
-            <div class="tabs">
-                <div class="tab active" onclick="switchTab('recent', this)">ბოლო ზარები</div>
-                <div class="tab" onclick="switchTab('favorites', this)">⭐ ფავორიტები</div>
+            <label class="custom-checkbox">
+                <input type="checkbox" id="rememberMe">
+                <span class="checkmark"><i class="ph-bold ph-check"></i></span>
+                <span class="chk-text">დაიმახსოვრე მონაცემები</span>
+            </label>
+            
+            <button class="btn-primary btn-full" onclick="startSipLogin()">
+                <span>სისტემაში შესვლა</span>
+                <i class="ph-bold ph-arrow-right"></i>
+            </button>
+            <div id="loginStatus" class="status-msg"></div>
+        </div>
+    </div>
+
+    <div class="app-layout">
+        
+        <nav class="side-nav">
+            <div class="nav-top">
+                <div class="nav-item active" onclick="switchMainView('phone')" title="ტელეფონი">
+                    <i class="ph-fill ph-phone-call"></i>
+                </div>
+                <div class="nav-item admin-only" onclick="switchMainView('team')" title="გუნდი და მართვა">
+                    <i class="ph-fill ph-users-three"></i>
+                </div>
+                <div class="nav-item admin-only" onclick="switchMainView('stats')" title="ანალიტიკა">
+                    <i class="ph-fill ph-chart-polar"></i>
+                </div>
             </div>
-            <ul class="call-list" id="registryList"></ul>
+            <div class="nav-bottom">
+                <div class="nav-op-status" id="navOpStatus"></div>
+                <div class="nav-item text-danger" onclick="performLogout()" title="გასვლა">
+                    <i class="ph-bold ph-sign-out"></i>
+                </div>
+            </div>
+        </nav>
+
+        <aside class="history-column">
+            <div class="history-header">
+                <h2>აქტივობა</h2>
+                <div class="search-box">
+                    <i class="ph ph-magnifying-glass search-icon"></i>
+                    <input type="text" id="searchInput" placeholder="ძებნა კატალოგში..." oninput="handleSearch()">
+                </div>
+            </div>
+            <div class="history-tabs">
+                <div class="htab active" onclick="switchTab('recent', this)">ბოლო ზარები</div>
+                <div class="htab" onclick="switchTab('favorites', this)"><i class="ph-fill ph-star"></i> ფავორიტები</div>
+            </div>
+            
+            <ul class="history-list" id="registryList"></ul>
+            
+
+            <div class="history-details-slide" id="callDetailsSlide">
+                <div class="slide-header">
+                    <button class="btn-icon-sm" onclick="closeCallDetails()"><i class="ph-bold ph-caret-left"></i></button>
+                    <span>ზარის დეტალები</span>
+                </div>
+                <div class="slide-body" id="slideBodyContent"></div>
+            </div>
         </aside>
 
-        <main class="workspace">
+        <main class="main-workspace">
             
-            <div class="workspace-panel active" id="view-dialpad">
-                <div class="softphone-header">ახალი გამავალი ზარი</div>
-                <div class="dial-display" id="dialInput"></div>
-                <div class="numpad">
-                    <button class="num-btn" onclick="addNum('1')">1</button>
-                    <button class="num-btn" onclick="addNum('2')">2</button>
-                    <button class="num-btn" onclick="addNum('3')">3</button>
-                    <button class="num-btn" onclick="addNum('4')">4</button>
-                    <button class="num-btn" onclick="addNum('5')">5</button>
-                    <button class="num-btn" onclick="addNum('6')">6</button>
-                    <button class="num-btn" onclick="addNum('7')">7</button>
-                    <button class="num-btn" onclick="addNum('8')">8</button>
-                    <button class="num-btn" onclick="addNum('9')">9</button>
-                    <button class="num-btn" onclick="addNum('*')">*</button>
-                    <button class="num-btn" onclick="addNum('0')">0</button>
-                    <button class="num-btn" onclick="addNum('#')">#</button>
-                </div>
-                <div class="dial-actions">
-                    <button class="btn-clear" onclick="clearNum()">⌫</button>
-                    <button class="btn-call-large" onclick="manualDial()">📞 დარეკვა</button>
-                    <button class="btn-clear" style="visibility: hidden;">⌫</button>
-                </div>
+            <div class="portal-global-header">
+                <img src="https://emis.ge/assets/svg/logo-with-name.svg" alt="EMIS Logo">
             </div>
 
-            <div class="workspace-panel" id="view-call">
-                <div class="caller-avatar" id="callAvatar">👤</div>
-                <h2 class="caller-name" id="callName">გიორგი მაისურაძე</h2>
-                <div class="caller-number" id="callNumber">+995 599 12 34 56</div>
-                <div class="call-status" id="callStatus">მიმდინარეობს საუბარი: 00:00</div>
-                <div class="control-grid" id="callControls">
-                    <button class="ctrl-btn"><div class="ctrl-icon">⏸️</div><span>პაუზა</span></button>
-                    <button class="ctrl-btn"><div class="ctrl-icon">➡️</div><span>გადართვა</span></button>
-                    <button class="ctrl-btn"><div class="ctrl-icon">📞↔️</div><span>კონსულტ.</span></button>
-                    <button class="ctrl-btn"><div class="ctrl-icon">🎤</div><span>Mute</span></button>
-                </div>
-                <button class="btn-end-large" onclick="endCallAndWrapup()">☎ ზარის დასრულება</button>
-            </div>
-
-            <div class="workspace-panel" id="view-wrapup" style="max-width: 650px;">
-                <div class="wrapup-header">
-                    <h2>ზარის დამუშავება</h2>
-                    <button class="jira-btn"><span style="font-size: 16px;">🎫</span> Jira Task</button>
-                </div>
-                <div class="form-card">
-                    <strong id="wrapName" style="font-size: 16px;"></strong> <br>
-                    <span style="color: var(--text-muted); font-size: 13px;" id="wrapDetails"></span>
-                </div>
-                <div class="wrapup-form">
-                    <div class="form-group">
-                        <label>კატეგორია <span style="color: var(--danger);">*</span></label>
-                        <select id="wrapCategory">
-                            <option value="">აირჩიეთ კატეგორია...</option>
-                            <option value="ელექტორნული ჟურნალი">ელექტორნული ჟურნალი</option>
-                            <option value="პირველკლასელთა რეგისტრაცია">პირველკლასელთა რეგისტრაცია</option>
-                            <option value="eschool">eschool</option>
-                            <option value="ანკეტა კითხვარები">ანკეტა კითხვარები</option>
-                            <option value="ინტერნეტის პრობლემა">ინტერნეტის პრობლემა</option>
-                        </select>
+            <div class="workspace-core">
+                
+                <div class="phone-widget" id="widget-phone">
+                    
+                    <div id="acwOverlay" class="acw-overlay" style="display: none;">
+                        <div class="pulse-ring"></div>
+                        <i class="ph-fill ph-clock-countdown" style="font-size: 40px; color: #F5A623; margin-bottom: 16px;"></i>
+                        <h3>მიმდინარეობს დამუშავება</h3>
+                        <p>გთხოვთ შეავსოთ მონაცემები<br>მარჯვენა პანელში (Wrap-up)</p>
                     </div>
-                    <div class="form-group">
-                        <label>კომენტარი <span style="color: var(--danger);">*</span></label>
-                        <textarea id="wrapComment" placeholder="აღწერეთ პრობლემა..."></textarea>
-                    </div>
-                    <button class="btn-save" onclick="saveRecord()">💾 შენახვა და დასრულება</button>
-                </div>
-            </div>
 
-            <div class="workspace-panel panel-wide" id="view-statistics">
-                <div class="stats-header">
-                    <h2>📊 ანალიტიკა და რეპორტინგი</h2>
-                    <div class="stats-filters">
-                        <select class="filter-select" id="statsPeriod" onchange="updateCharts()">
-                            <option value="all">მთლიანი პერიოდი (ბოლო 30 დღე)</option>
-                            <option value="week">მიმდინარე კვირა</option>
-                            <option value="today">დღეს</option>
+                    <div class="widget-view active" id="view-dialpad">
+                        <div class="dialpad-header">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span id="displayOpName" class="op-name-badge">ოპერატორი</span>
+                                <span id="roleBadge" class="role-badge admin-only">Admin</span>
+                            </div>
+                            <select class="status-select online" id="opStatus" onchange="changeStatus(this)">
+                                <option value="online">ხელმისაწვდომი</option>
+                                <option value="wrapup">დამუშავება (ACW)</option>
+                                <option value="break">შესვენება</option>
+                            </select>
+                        </div>
+                        
+                        <div class="dial-display" id="dialInput"></div>
+                        
+                        <div class="numpad">
+                            <button class="num-btn" onclick="addNum('1')">1</button>
+                            <button class="num-btn" onclick="addNum('2')">2<span class="sub">ABC</span></button>
+                            <button class="num-btn" onclick="addNum('3')">3<span class="sub">DEF</span></button>
+                            <button class="num-btn" onclick="addNum('4')">4<span class="sub">GHI</span></button>
+                            <button class="num-btn" onclick="addNum('5')">5<span class="sub">JKL</span></button>
+                            <button class="num-btn" onclick="addNum('6')">6<span class="sub">MNO</span></button>
+                            <button class="num-btn" onclick="addNum('7')">7<span class="sub">PQRS</span></button>
+                            <button class="num-btn" onclick="addNum('8')">8<span class="sub">TUV</span></button>
+                            <button class="num-btn" onclick="addNum('9')">9<span class="sub">WXYZ</span></button>
+                            <button class="num-btn" onclick="addNum('*')">*</button>
+                            <button class="num-btn" onclick="addNum('0')">0<span class="sub">+</span></button>
+                            <button class="num-btn" onclick="addNum('#')">#</button>
+                        </div>
+                        
+                        <div class="dial-actions">
+                            <button class="btn-icon-action" onclick="clearNum()"><i class="ph-fill ph-backspace"></i></button>
+                            <button class="btn-call-circle" onclick="manualDial()"><i class="ph-fill ph-phone"></i></button>
+                            <button class="btn-icon-action" style="visibility: hidden;"><i class="ph-fill ph-backspace"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="widget-view" id="view-call">
+                        <div class="active-call-top">
+                            <div class="call-direction" id="callDirectionText">გამავალი ზარი</div>
+                            
+                            <div class="caller-avatar pulse" id="callAvatarIcon">
+                                <i class="ph-fill ph-user" id="callAvatarPlaceholder"></i>
+                                <img src="" id="callAvatarImg" style="display:none; width:100%; height:100%; object-fit:cover; border-radius:50%;">
+                            </div>
+                            
+                            <h2 class="caller-name" id="callName">გიორგი მაისურაძე</h2>
+                            <div class="caller-number" id="callNumber">+995 599 12 34 56</div>
+                            <div class="call-timer" id="callStatus">რეკავს...</div>
+                            
+                            <div class="quick-tags-panel">
+                                <button class="tag-pill tag-vip" id="tagBtnVIP" onclick="toggleQuickTag('VIP', this)">VIP</button>
+                                <button class="tag-pill tag-complaint" id="tagBtnComplaint" onclick="toggleQuickTag('Complaint', this)">Complaint</button>
+                                <button class="tag-pill tag-info" id="tagBtnInfo" onclick="toggleQuickTag('Info', this)">Info</button>
+                            </div>
+                        </div>
+
+                        <div class="active-call-controls">
+                            <button class="ctrl-btn"><div class="ctrl-icon"><i class="ph-bold ph-pause"></i></div><span>პაუზა</span></button>
+                            <button class="ctrl-btn"><div class="ctrl-icon"><i class="ph-bold ph-arrows-left-right"></i></div><span>Transfer</span></button>
+                            <button class="ctrl-btn" onclick="toggleInCallKeypad()"><div class="ctrl-icon" id="keypadBtnIcon"><i class="ph-bold ph-numpad"></i></div><span>Keypad</span></button>
+                        </div>
+                        
+                        <div class="active-call-bottom">
+                            <button class="btn-danger-pill" onclick="endCallAndWrapup()">
+                                <i class="ph-fill ph-phone-disconnect"></i> ზარის დასრულება
+                            </button>
+                        </div>
+
+                        <div class="in-call-keypad" id="inCallKeypadOverlay" style="display: none;">
+                            <div class="numpad-mini">
+                                <button class="num-btn-sm" onclick="sendDTMF('1')">1</button>
+                                <button class="num-btn-sm" onclick="sendDTMF('2')">2</button>
+                                <button class="num-btn-sm" onclick="sendDTMF('*')">*</button>
+                                <button class="num-btn-sm" onclick="sendDTMF('0')">0</button>
+                                <button class="num-btn-sm" onclick="sendDTMF('#')">#</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="customer-360-panel" id="customer360Panel">
+                    <div class="panel-header">
+                        <h3><i class="ph-bold ph-identification-card"></i> Customer 360</h3>
+                        <button class="btn-jira" onclick="createJiraTicket()"><i class="ph-bold ph-ticket"></i> Jira Task</button>
+                    </div>
+                    
+                    <div class="panel-body" onkeydown="handleWrapupEnter(event)">
+                        <div class="customer-profile">
+                            <div class="cp-avatar"><img src="" id="wrapAvatar"></div>
+                            <div class="cp-info">
+                                <h4 id="wrapName">გიორგი მაისურაძე</h4>
+                                <p id="wrapNumber">+995 599 12 34 56</p>
+                                <div class="cp-tags" id="wrapTagsContainer"></div>
+                            </div>
+                            <div class="cp-duration" id="wrapDuration">00:00</div>
+                        </div>
+
+                        <div id="wrapupHistoryBlock" style="display: none; margin-bottom: 24px;"></div>
+
+                        <div class="form-group">
+                            <label>კატეგორია <span class="req">*</span></label>
+                            <div class="select-wrapper">
+                                <i class="ph-bold ph-caret-down select-arrow"></i>
+                                <select id="wrapCategory" class="clean-input">
+                                    <option value="">აირჩიეთ...</option>
+                                    <option value="ელექტორნული ჟურნალი">ელ. ჟურნალი</option>
+                                    <option value="პირველკლასელთა რეგისტრაცია">რეგისტრაცია</option>
+                                    <option value="eschool">eschool</option>
+                                    <option value="ანკეტა კითხვარები">კითხვარები</option>
+                                    <option value="ინტერნეტის პრობლემა">ინტერნეტი</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>კომენტარი</label>
+                            <textarea id="wrapComment" class="clean-input" placeholder="დაამატეთ საუბრის დეტალები..."></textarea>
+                        </div>
+                        
+                        <label class="custom-checkbox" style="margin-bottom: 24px;">
+                            <input type="checkbox" id="wrapFavorite">
+                            <span class="checkmark"><i class="ph-bold ph-check"></i></span>
+                            <span class="chk-text">ფავორიტებში დამატება</span>
+                        </label>
+
+                        <button class="btn-primary btn-full" onclick="saveRecord()">
+                            <i class="ph-bold ph-floppy-disk"></i> შენახვა (Enter)
+                        </button>
+                    </div>
+                </div>
+            </div> <div class="admin-dashboard-container" id="widget-stats" style="display: none;">
+                <div class="dash-header">
+                    <div>
+                        <h2><i class="ph-fill ph-chart-line-up" style="color:var(--primary); margin-right:8px;"></i> გლობალური ანალიტიკა</h2>
+                        <p class="dash-subtitle">ქოლ-ცენტრის სრული სტატისტიკა</p>
+                    </div>
+                    <div class="dash-filters">
+                        <div class="date-range">
+                            <input type="date" class="clean-input-sm" id="dateFrom" title="საიდან">
+                            <span>-</span>
+                            <input type="date" class="clean-input-sm" id="dateTo" title="სადამდე">
+                        </div>
+                        <select class="clean-input-sm" style="width: 150px;">
+                            <option>დღეს</option>
+                            <option>ამ კვირაში</option>
+                            <option>ამ თვეში</option>
                         </select>
-                        <button class="btn-back" onclick="closeStatistics()">← სამუშაო სივრცეში დაბრუნება</button>
+                        <button class="btn-primary" style="padding: 10px 16px; border-radius: 10px;" onclick="renderAdminCharts()"><i class="ph-bold ph-funnel"></i> ფილტრი</button>
                     </div>
                 </div>
 
                 <div class="kpi-grid">
                     <div class="kpi-card">
-                        <div class="kpi-title">ჯამური ზარები</div>
-                        <div class="kpi-value" id="kpiTotal">0</div>
-                        <div class="kpi-sub">↑ 12% წინა პერიოდთან შედარებით</div>
+                        <div class="kpi-icon" style="background: rgba(0, 196, 140, 0.1); color: var(--primary);"><i class="ph-fill ph-phone-incoming"></i></div>
+                        <div class="kpi-data"><span class="kpi-title">ჯამური ზარები</span><strong class="kpi-value">1,284</strong></div>
                     </div>
                     <div class="kpi-card">
-                        <div class="kpi-title">ყველაზე ხშირი პრობლემა</div>
-                        <div class="kpi-value" id="kpiTopCategory" style="font-size: 20px; color: var(--danger); margin-top: 10px;">-</div>
-                        <div class="kpi-sub" style="margin-top: 5px; color: var(--text-muted);" id="kpiTopCount">0 ზარი</div>
+                        <div class="kpi-icon" style="background: rgba(74, 144, 226, 0.1); color: #4A90E2;"><i class="ph-fill ph-clock"></i></div>
+                        <div class="kpi-data"><span class="kpi-title">საშ. ხანგრძლივობა</span><strong class="kpi-value">02:45</strong></div>
                     </div>
                     <div class="kpi-card">
-                        <div class="kpi-title">საშუალო ხანგრძლივობა (AHT)</div>
-                        <div class="kpi-value">03:45</div>
-                        <div class="kpi-sub" style="color: var(--warning);">სტაბილური მაჩვენებელი</div>
+                        <div class="kpi-icon" style="background: rgba(255, 107, 107, 0.1); color: var(--danger);"><i class="ph-fill ph-phone-disconnect"></i></div>
+                        <div class="kpi-data"><span class="kpi-title">გაცდენილი</span><strong class="kpi-value">42 <span style="font-size:12px; font-weight:500; color:var(--text-muted)">(3.2%)</span></strong></div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon" style="background: rgba(245, 166, 35, 0.1); color: #F5A623;"><i class="ph-fill ph-star"></i></div>
+                        <div class="kpi-data"><span class="kpi-title">მომსახურების ხარისხი</span><strong class="kpi-value">94%</strong></div>
                     </div>
                 </div>
 
                 <div class="charts-grid">
-                    <div class="chart-container">
-                        <div class="chart-title">ზარების განაწილება კატეგორიების მიხედვით (TOP 5)</div>
-                        <div class="canvas-wrapper"><canvas id="barChart"></canvas></div>
+                    <div class="chart-card full-width">
+                        <div class="chart-header">ზარების დინამიკა (ტრენდი)</div>
+                        <div class="canvas-container" style="height: 250px;"><canvas id="chartTrend"></canvas></div>
                     </div>
-                    <div class="chart-container">
-                        <div class="chart-title">შემომავალი / გამავალი</div>
-                        <div class="canvas-wrapper"><canvas id="pieChart"></canvas></div>
+                    <div class="chart-card">
+                        <div class="chart-header">კატეგორიების მიხედვით</div>
+                        <div class="canvas-container" style="height: 220px;"><canvas id="chartCategory"></canvas></div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-header">აქტიური ტეგები</div>
+                        <div class="canvas-container" style="height: 220px;"><canvas id="chartTags"></canvas></div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-header">დატვირთვა ოპერატორებზე</div>
+                        <div class="canvas-container" style="height: 220px;"><canvas id="chartOperators"></canvas></div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-header">გუნდების მიხედვით</div>
+                        <div class="canvas-container" style="height: 220px;"><canvas id="chartTeams"></canvas></div>
                     </div>
                 </div>
             </div>
 
+            <div class="admin-dashboard-container" id="widget-team" style="display: none;">
+                <div class="dash-header">
+                    <div>
+                        <h2><i class="ph-fill ph-sliders" style="color:var(--primary); margin-right:8px;"></i> სისტემის მართვა</h2>
+                        <p class="dash-subtitle">ოპერატორები, ჯგუფები, ტეგები და კატეგორიები</p>
+                    </div>
+                    <button class="btn-primary" style="padding: 10px 16px; border-radius: 10px;"><i class="ph-bold ph-plus"></i> ახალი ჩანაწერის დამატება</button>
+                </div>
+
+                <div class="settings-layout">
+                    <div class="settings-sidebar">
+                        <ul class="settings-nav">
+                            <li class="active"><i class="ph-bold ph-users"></i> ოპერატორები</li>
+                            <li><i class="ph-bold ph-users-three"></i> გუნდები</li>
+                            <li><i class="ph-bold ph-list-dashes"></i> კატეგორიები</li>
+                            <li><i class="ph-bold ph-tag"></i> ტეგები (Tags)</li>
+                            <li><i class="ph-bold ph-phone"></i> ცხელი ხაზები</li> </ul>
+                    </div>
+                    <div class="settings-content">
+                        <div class="table-container">
+                            <table class="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>სახელი და გვარი</th>
+                                        <th>შიდა ნომერი (SIP)</th>
+                                        <th>გუნდი</th>
+                                        <th>სტატუსი</th>
+                                        <th style="text-align: right;">მოქმედება</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>ნინო ბერიძე</strong><br><span style="font-size:11px; color:var(--text-muted);">nino.beridze@emis.ge</span></td>
+                                        <td>101</td>
+                                        <td><span class="group-badge">Helpdesk</span></td>
+                                        <td><span class="badge badge-green">აქტიური</span></td>
+                                        <td style="text-align: right;">
+                                            <button class="btn-icon-sm"><i class="ph-bold ph-pencil-simple"></i></button>
+                                            <button class="btn-icon-sm text-danger"><i class="ph-bold ph-trash"></i></button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ლევან მესხი</strong><br><span style="font-size:11px; color:var(--text-muted);">levan.meskhi@emis.ge</span></td>
+                                        <td>102</td>
+                                        <td><span class="group-badge">IT Support</span></td>
+                                        <td><span class="badge badge-green">აქტიური</span></td>
+                                        <td style="text-align: right;">
+                                            <button class="btn-icon-sm"><i class="ph-bold ph-pencil-simple"></i></button>
+                                            <button class="btn-icon-sm text-danger"><i class="ph-bold ph-trash"></i></button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <footer class="app-footer" id="appFooter">
+                
+                <div id="footerOperatorStats" class="footer-stats">
+                    <div class="f-stat">
+                        <div class="f-icon"><i class="ph-fill ph-phone-incoming"></i></div>
+                        <div><span>შემოსული</span><strong id="fsIn">12</strong></div>
+                    </div>
+                    <div class="f-stat">
+                        <div class="f-icon out"><i class="ph-fill ph-phone-outgoing"></i></div>
+                        <div><span>გასული</span><strong id="fsOut">4</strong></div>
+                    </div>
+                    <div class="f-stat">
+                        <div class="f-icon miss"><i class="ph-fill ph-phone-disconnect"></i></div>
+                        <div><span>გაცდენილი</span><strong id="fsMissed">1</strong></div>
+                    </div>
+                </div>
+                
+                <div id="footerHotlines" class="footer-hotlines">
+                    <div class="f-hotline-title"><i class="ph-bold ph-address-book"></i> საინფორმაციო ხაზები:</div>
+                    <div id="hotlinesContainer" class="hotlines-list">
+                        </div>
+                    <button class="btn-icon-sm admin-only" title="რედაქტირება" onclick="switchMainView('team')"><i class="ph-bold ph-pencil-simple"></i></button>
+                </div>
+
+            </footer>
+
+           
+
         </main>
     </div>
 
-    <button class="btn-sim" onclick="simulateIncomingCall()">📞 შემომავალი ზარის იმიტაცია</button>
-    <div class="toast" id="toastMsg"></div>
+    <audio id="remoteAudio" autoplay></audio>
+    <div class="toast" id="toastMsg">
+        <i class="ph-fill ph-info toast-icon" id="toastIcon"></i>
+        <span id="toastText"></span>
+        <button id="toastActionBtn" class="btn-sim" style="display:none; background:white; color:var(--primary); margin-left:10px; padding:4px 8px;">პასუხი</button>
+    </div>
 
     <script type="module" src="/src/main.js"></script>
 </body>
