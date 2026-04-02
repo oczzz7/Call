@@ -75,30 +75,37 @@
             </div>
         </nav>
 
-        <aside class="history-column">
-            <div class="history-header">
-                <h2>აქტივობა</h2>
-                <div class="search-box">
-                    <i class="ph ph-magnifying-glass search-icon"></i>
-                    <input type="text" id="searchInput" placeholder="ძებნა კატალოგში..." oninput="handleSearch()">
-                </div>
-            </div>
-            <div class="history-tabs">
-                <div class="htab active" onclick="switchTab('recent', this)">ბოლო ზარები</div>
-                <div class="htab" onclick="switchTab('favorites', this)"><i class="ph-fill ph-star"></i> ფავორიტები</div>
-            </div>
-            
-            <ul class="history-list" id="registryList"></ul>
-            
+       <aside class="history-column">
+    <div class="history-header">
+        <h2>აქტივობა</h2>
+        <div class="search-box">
+            <i class="ph ph-magnifying-glass search-icon"></i>
+            <input type="text" id="topSearchInput" placeholder="ძებნა კატალოგში..." oninput="handleSearch()">
+        </div>
+    </div>
 
-            <div class="history-details-slide" id="callDetailsSlide">
-                <div class="slide-header">
-                    <button class="btn-icon-sm" onclick="closeCallDetails()"><i class="ph-bold ph-caret-left"></i></button>
-                    <span>ზარის დეტალები</span>
-                </div>
-                <div class="slide-body" id="slideBodyContent"></div>
-            </div>
-        </aside>
+    <div class="history-tabs">
+        <div class="htab active" onclick="switchTab('recent', this)">ბოლო ზარები</div>
+        <div class="htab" onclick="switchTab('favorites', this)"><i class="ph-fill ph-star"></i> ფავორიტები</div>
+    </div>
+    
+    <div class="registry-wrapper" style="display: flex; flex-direction: column; flex: 1; overflow-y: auto;">
+        <ul class="history-list" id="registryList" style="flex: 1;">
+            </ul>
+        
+        <button id="loadMoreBtn" onclick="loadMoreCalls()" style="margin: 15px; padding: 12px; border: 1px dashed var(--border); border-radius: 8px; background: var(--surface); color: var(--text-muted); cursor: pointer; font-size: 13px; display: none; transition: 0.2s;">
+            <i class="ph-bold ph-caret-circle-down"></i> <span id="loadMoreText">მეტის ჩვენება</span>
+        </button>
+    </div>
+
+    <div class="history-details-slide" id="callDetailsSlide">
+        <div class="slide-header">
+            <button class="btn-icon-sm" onclick="closeCallDetails()"><i class="ph-bold ph-caret-left"></i></button>
+            <span>ზარის დეტალები</span>
+        </div>
+        <div class="slide-body" id="slideBodyContent"></div>
+    </div>
+</aside>
 
         <main class="main-workspace">
             
@@ -167,11 +174,8 @@
                             <div class="caller-number" id="callNumber">+995 599 12 34 56</div>
                             <div class="call-timer" id="callStatus">რეკავს...</div>
                             
-                            <div class="quick-tags-panel">
-                                <button class="tag-pill tag-vip" id="tagBtnVIP" onclick="toggleQuickTag('VIP', this)">VIP</button>
-                                <button class="tag-pill tag-complaint" id="tagBtnComplaint" onclick="toggleQuickTag('Complaint', this)">Complaint</button>
-                                <button class="tag-pill tag-info" id="tagBtnInfo" onclick="toggleQuickTag('Info', this)">Info</button>
-                            </div>
+                           <div id="availableTagsWrapper" style="display: flex; flex-wrap: wrap; gap: 8px;">
+    </div>
                         </div>
 
                         <div class="active-call-controls">
@@ -248,127 +252,115 @@
                         </button>
                     </div>
                 </div>
-            </div> <div class="admin-dashboard-container" id="widget-stats" style="display: none;">
-                <div class="dash-header">
-                    <div>
-                        <h2><i class="ph-fill ph-chart-line-up" style="color:var(--primary); margin-right:8px;"></i> გლობალური ანალიტიკა</h2>
-                        <p class="dash-subtitle">ქოლ-ცენტრის სრული სტატისტიკა</p>
-                    </div>
-                    <div class="dash-filters">
-                        <div class="date-range">
-                            <input type="date" class="clean-input-sm" id="dateFrom" title="საიდან">
-                            <span>-</span>
-                            <input type="date" class="clean-input-sm" id="dateTo" title="სადამდე">
-                        </div>
-                        <select class="clean-input-sm" style="width: 150px;">
-                            <option>დღეს</option>
-                            <option>ამ კვირაში</option>
-                            <option>ამ თვეში</option>
-                        </select>
-                        <button class="btn-primary" style="padding: 10px 16px; border-radius: 10px;" onclick="renderAdminCharts()"><i class="ph-bold ph-funnel"></i> ფილტრი</button>
-                    </div>
-                </div>
-
-                <div class="kpi-grid">
-                    <div class="kpi-card">
-                        <div class="kpi-icon" style="background: rgba(0, 196, 140, 0.1); color: var(--primary);"><i class="ph-fill ph-phone-incoming"></i></div>
-                        <div class="kpi-data"><span class="kpi-title">ჯამური ზარები</span><strong class="kpi-value">1,284</strong></div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-icon" style="background: rgba(74, 144, 226, 0.1); color: #4A90E2;"><i class="ph-fill ph-clock"></i></div>
-                        <div class="kpi-data"><span class="kpi-title">საშ. ხანგრძლივობა</span><strong class="kpi-value">02:45</strong></div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-icon" style="background: rgba(255, 107, 107, 0.1); color: var(--danger);"><i class="ph-fill ph-phone-disconnect"></i></div>
-                        <div class="kpi-data"><span class="kpi-title">გაცდენილი</span><strong class="kpi-value">42 <span style="font-size:12px; font-weight:500; color:var(--text-muted)">(3.2%)</span></strong></div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-icon" style="background: rgba(245, 166, 35, 0.1); color: #F5A623;"><i class="ph-fill ph-star"></i></div>
-                        <div class="kpi-data"><span class="kpi-title">მომსახურების ხარისხი</span><strong class="kpi-value">94%</strong></div>
-                    </div>
-                </div>
-
-                <div class="charts-grid">
-                    <div class="chart-card full-width">
-                        <div class="chart-header">ზარების დინამიკა (ტრენდი)</div>
-                        <div class="canvas-container" style="height: 250px;"><canvas id="chartTrend"></canvas></div>
-                    </div>
-                    <div class="chart-card">
-                        <div class="chart-header">კატეგორიების მიხედვით</div>
-                        <div class="canvas-container" style="height: 220px;"><canvas id="chartCategory"></canvas></div>
-                    </div>
-                    <div class="chart-card">
-                        <div class="chart-header">აქტიური ტეგები</div>
-                        <div class="canvas-container" style="height: 220px;"><canvas id="chartTags"></canvas></div>
-                    </div>
-                    <div class="chart-card">
-                        <div class="chart-header">დატვირთვა ოპერატორებზე</div>
-                        <div class="canvas-container" style="height: 220px;"><canvas id="chartOperators"></canvas></div>
-                    </div>
-                    <div class="chart-card">
-                        <div class="chart-header">გუნდების მიხედვით</div>
-                        <div class="canvas-container" style="height: 220px;"><canvas id="chartTeams"></canvas></div>
-                    </div>
-                </div>
+            </div> 
+            <div class="admin-dashboard-container" id="widget-stats" style="display: none;">
+    <div class="dash-header">
+        <div>
+            <h2><i class="ph-fill ph-chart-line-up" style="color:var(--primary); margin-right:8px;"></i> გლობალური ანალიტიკა</h2>
+            <p class="dash-subtitle">ქოლ-ცენტრის სრული სტატისტიკა</p>
+        </div>
+        <div class="dash-filters">
+            <div class="date-range">
+                <input type="date" class="clean-input-sm" id="filterStartDate" onchange="handleDateFilter()" title="საიდან">
+                <span>-</span>
+                <input type="date" class="clean-input-sm" id="filterEndDate" onchange="handleDateFilter()" title="სადამდე">
             </div>
+            <select id="filterPreset" class="clean-input-sm" style="width: 150px;" onchange="handlePresetFilter()">
+                <option value="all">ყველა დროის</option>
+                <option value="today">დღეს</option>
+                <option value="week">ბოლო 7 დღე</option>
+                <option value="month">ბოლო 30 დღე</option>
+            </select>
+            
+            <button class="btn-primary" style="padding: 10px 16px; border-radius: 10px; display: flex; align-items: center; gap: 8px;" onclick="exportToCSV()">
+                <i class="ph-bold ph-download-simple"></i> ექსპორტი
+            </button>
+        </div>
+    </div>
 
-            <div class="admin-dashboard-container" id="widget-team" style="display: none;">
-                <div class="dash-header">
-                    <div>
-                        <h2><i class="ph-fill ph-sliders" style="color:var(--primary); margin-right:8px;"></i> სისტემის მართვა</h2>
-                        <p class="dash-subtitle">ოპერატორები, ჯგუფები, ტეგები და კატეგორიები</p>
-                    </div>
-                    <button class="btn-primary" style="padding: 10px 16px; border-radius: 10px;"><i class="ph-bold ph-plus"></i> ახალი ჩანაწერის დამატება</button>
-                </div>
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-icon" style="background: rgba(0, 196, 140, 0.1); color: var(--primary);"><i class="ph-fill ph-phone-incoming"></i></div>
+            <div class="kpi-data"><span class="kpi-title">ჯამური ზარები</span><strong class="kpi-value" id="statTotal">0</strong></div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon" style="background: rgba(74, 144, 226, 0.1); color: #4A90E2;"><i class="ph-fill ph-clock"></i></div>
+            <div class="kpi-data"><span class="kpi-title">შემოსული</span><strong class="kpi-value" id="statIn">0</strong></div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon" style="background: rgba(255, 107, 107, 0.1); color: var(--danger);"><i class="ph-fill ph-phone-disconnect"></i></div>
+            <div class="kpi-data"><span class="kpi-title">გასული</span><strong class="kpi-value" id="statOut">0</strong></div>
+        </div>
+    </div>
 
-                <div class="settings-layout">
-                    <div class="settings-sidebar">
-                        <ul class="settings-nav">
-                            <li class="active"><i class="ph-bold ph-users"></i> ოპერატორები</li>
-                            <li><i class="ph-bold ph-users-three"></i> გუნდები</li>
-                            <li><i class="ph-bold ph-list-dashes"></i> კატეგორიები</li>
-                            <li><i class="ph-bold ph-tag"></i> ტეგები (Tags)</li>
-                            <li><i class="ph-bold ph-phone"></i> ცხელი ხაზები</li> </ul>
-                    </div>
-                    <div class="settings-content">
-                        <div class="table-container">
-                            <table class="admin-table">
-                                <thead>
-                                    <tr>
-                                        <th>სახელი და გვარი</th>
-                                        <th>შიდა ნომერი (SIP)</th>
-                                        <th>გუნდი</th>
-                                        <th>სტატუსი</th>
-                                        <th style="text-align: right;">მოქმედება</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td><strong>ნინო ბერიძე</strong><br><span style="font-size:11px; color:var(--text-muted);">nino.beridze@emis.ge</span></td>
-                                        <td>101</td>
-                                        <td><span class="group-badge">Helpdesk</span></td>
-                                        <td><span class="badge badge-green">აქტიური</span></td>
-                                        <td style="text-align: right;">
-                                            <button class="btn-icon-sm"><i class="ph-bold ph-pencil-simple"></i></button>
-                                            <button class="btn-icon-sm text-danger"><i class="ph-bold ph-trash"></i></button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td><strong>ლევან მესხი</strong><br><span style="font-size:11px; color:var(--text-muted);">levan.meskhi@emis.ge</span></td>
-                                        <td>102</td>
-                                        <td><span class="group-badge">IT Support</span></td>
-                                        <td><span class="badge badge-green">აქტიური</span></td>
-                                        <td style="text-align: right;">
-                                            <button class="btn-icon-sm"><i class="ph-bold ph-pencil-simple"></i></button>
-                                            <button class="btn-icon-sm text-danger"><i class="ph-bold ph-trash"></i></button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+    <div class="charts-grid">
+        <div class="chart-card full-width">
+            <div class="chart-header">ზარების დინამიკა (ტრენდი)</div>
+            <div class="canvas-container" style="height: 250px;"><canvas id="chartTrend"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <div class="chart-header">კატეგორიების მიხედვით</div>
+            <div class="canvas-container" style="height: 220px;"><canvas id="chartCategory"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <div class="chart-header">აქტიური ტეგები</div>
+            <div class="canvas-container" style="height: 220px;"><canvas id="chartTags"></canvas></div>
+        </div>
+    </div>
+</div>
+
+            <div id="widget-team" class="widget-view" style="display: none; padding: 24px;">
+    <h2 style="margin-bottom: 24px;"><i class="ph-bold ph-gear"></i> სისტემის მართვა</h2>
+    
+    <div style="display: flex; flex-wrap: wrap; gap: 24px;">
+        
+        <div style="flex: 1; min-width: 45%; background: var(--surface); padding: 20px; border-radius: 12px; border: 1px solid var(--border);">
+            <h3 style="margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">ცხელი ხაზები</h3>
+            <div id="adminHotlinesList" style="margin-bottom: 20px; max-height: 200px; overflow-y: auto;"></div>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+    <input type="text" id="newHotlineName" placeholder="დასახელება" style="flex: 1; min-width: 120px; padding: 10px; border: 1px solid var(--border); border-radius: 6px;">
+    <input type="text" id="newHotlineNumber" placeholder="ნომერი" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid var(--border); border-radius: 6px;">
+    <button onclick="addNewHotline()" class="btn-primary" style="padding: 10px 16px; border-radius: 6px; cursor: pointer; white-space: nowrap;">დამატება</button>
+</div>
+        </div>
+
+        <div style="flex: 1; min-width: 45%; background: var(--surface); padding: 20px; border-radius: 12px; border: 1px solid var(--border);">
+            <h3 style="margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">ოპერატორები</h3>
+            <div id="adminOperatorsList" style="margin-bottom: 20px; max-height: 200px; overflow-y: auto;"></div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <input type="text" id="newOpName" placeholder="სახელი და გვარი" style="padding: 10px; border: 1px solid var(--border); border-radius: 6px;">
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="newOpExt" placeholder="შიდა ნომერი" style="flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: 6px;">
+                    <select id="newOpTeam" style="flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: 6px;">
+                        <option value="Helpdesk">Helpdesk</option>
+                        <option value="IT Support">IT Support</option>
+                    </select>
                 </div>
+                <button onclick="addNewOperator()" class="btn-primary" style="padding: 10px; border-radius: 6px; cursor: pointer;">დამატება</button>
             </div>
+        </div>
+
+        <div style="flex: 1; min-width: 45%; background: var(--surface); padding: 20px; border-radius: 12px; border: 1px solid var(--border);">
+            <h3 style="margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">ზარის კატეგორიები</h3>
+            <div id="adminCategoriesList" style="margin-bottom: 20px; max-height: 200px; overflow-y: auto;"></div>
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="newCategoryName" placeholder="ახალი კატეგორია" style="flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: 6px;">
+                <button onclick="addNewCategory()" class="btn-primary" style="padding: 10px 16px; border-radius: 6px; cursor: pointer;">დამატება</button>
+            </div>
+        </div>
+
+        <div style="flex: 1; min-width: 45%; background: var(--surface); padding: 20px; border-radius: 12px; border: 1px solid var(--border);">
+            <h3 style="margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">ტეგები</h3>
+            <div id="adminTagsList" style="margin-bottom: 20px; max-height: 200px; overflow-y: auto;"></div>
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="newTagName" placeholder="ტეგის სახელი (მაგ: VIP)" style="flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: 6px;">
+                <input type="color" id="newTagColor" value="#FF6B6B" title="ტეგის ფერი" style="width: 50px; height: 38px; padding: 0; border: 1px solid var(--border); border-radius: 6px; cursor: pointer;">
+                <button onclick="addNewTag()" class="btn-primary" style="padding: 10px 16px; border-radius: 6px; cursor: pointer;">დამატება</button>
+            </div>
+        </div>
+
+    </div>
+</div>
 
             <footer class="app-footer" id="appFooter">
                 
