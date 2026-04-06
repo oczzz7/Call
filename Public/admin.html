@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+</head>
+<body>
+
+    <div class="admin-layout">
+        <aside class="admin-sidebar">
+            <h2 style="color: white; margin-bottom: 30px; font-size: 20px;">EMIS Call Center</h2>
+            <div class="online-ops-card">
+                <h3><span class="live-dot"></span> ხაზზე არიან</h3>
+                <ul id="onlineOperatorsList" class="ops-list"><li style="color: #64748b;">არავინ არ არის</li></ul>
+            </div>
+            <button class="btn-primary" style="background: var(--success); margin-top: 20px; width: 100%;" onclick="exportCSV()">
+                <i class="ph-bold ph-download-simple"></i> ექსპორტი (CSV)
+            </button>
+        </aside>
+
+        <main class="admin-main">
+            <div class="admin-header">
+                <h1 style="margin: 0; font-size: 24px;">სტატისტიკა</h1>
+                <div class="filter-group">
+                    <input type="date" id="filterStart" class="form-control" style="width: auto;">
+                    <span style="color: var(--text-muted);">-</span>
+                    <input type="date" id="filterEnd" class="form-control" style="width: auto;">
+                    <button class="btn-primary" onclick="fetchAdminData()">გაფილტვრა</button>
+                    <button class="theme-toggle" onclick="toggleTheme()" title="ბნელი/ნათელი რეჟიმი" style="margin-left: 10px;">
+                        <i class="ph-bold ph-moon"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="kpi-row">
+                <div class="kpi-card"><span>სულ ზარი</span><strong id="kpiTotal">0</strong></div>
+                <div class="kpi-card"><span>დაუხარისხებელი</span><strong id="kpiUnclassified" style="color: var(--warning);">0</strong></div>
+                <div class="kpi-card"><span>ტასკები (Pending)</span><strong id="kpiPending" style="color: var(--primary);">0</strong></div>
+                <div class="kpi-card"><span>მაღალი/კრიტიკული</span><strong id="kpiPriority" style="color: var(--danger);">0</strong></div>
+            </div>
+
+            <div class="charts-row">
+                <div class="chart-box">
+                    <h3>კატეგორიები</h3>
+                    <div class="canvas-container"><canvas id="categoryChart"></canvas></div>
+                </div>
+                <div class="chart-box">
+                    <h3>თეგების გადანაწილება</h3>
+                    <div class="canvas-container"><canvas id="tagChart"></canvas></div>
+                </div>
+                <div class="chart-box">
+                    <h3>აქტივობის ტრენდი (საათები)</h3>
+                    <div class="canvas-container"><canvas id="trendChart"></canvas></div>
+                </div>
+            </div>
+
+            <div class="admin-header" style="margin-top: 20px;"><h2 style="margin: 0; font-size: 20px;">პარამეტრების მართვა</h2></div>
+            <div class="settings-row">
+                <div class="settings-box">
+                    <h3>კატეგორიები</h3>
+                    <div class="input-group">
+                        <input type="text" id="newCatInput" class="form-control" placeholder="სახელი...">
+                        <input type="text" id="newCatExts" class="form-control" placeholder="ვის? (მაგ: 101,102)">
+                        <button class="btn-primary" onclick="addSetting('categories', 'newCatInput', 'newCatExts')">დამატება</button>
+                    </div>
+                    <ul id="adminCatList" class="ops-list settings-list"></ul>
+                </div>
+                <div class="settings-box">
+                    <h3>თეგები</h3>
+                    <div class="input-group">
+                        <input type="text" id="newTagInput" class="form-control" placeholder="თეგის სახელი...">
+                        <button class="btn-primary" onclick="addSetting('tags', 'newTagInput')">დამატება</button>
+                    </div>
+                    <ul id="adminTagList" class="ops-list settings-list"></ul>
+                </div>
+                <div class="settings-box">
+                    <h3>სტატუსები</h3>
+                    <div class="input-group">
+                        <input type="text" id="newStatusInput" class="form-control" placeholder="სტატუსის სახელი...">
+                        <button class="btn-primary" onclick="addSetting('statuses', 'newStatusInput')">დამატება</button>
+                    </div>
+                    <ul id="adminStatusList" class="ops-list settings-list"></ul>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="admin.js"></script>
+</body>
+</html>

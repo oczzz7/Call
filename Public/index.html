@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ოპერატორის პანელი</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+</head>
+<body>
+
+    <div class="auth-container" id="loginBlock">
+        <h2>სისტემაში შესვლა</h2>
+        <input type="text" id="extInput" class="form-control" placeholder="SIP ნომერი (მაგ: 101)" onkeypress="if(event.key === 'Enter') connectOperator()">
+        <button class="btn-primary" onclick="connectOperator()"><i class="ph-bold ph-sign-in"></i> დაკავშირება</button>
+    </div>
+
+    <div class="dashboard" id="workspace" style="display: none;">
+        <div class="dash-header">
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <span style="width: 10px; height: 10px; background: var(--success); border-radius: 50%;"></span>
+                <span>ხაზზეა: <strong id="myExt"></strong></span>
+                <button class="theme-toggle" onclick="toggleTheme()" title="ბნელი/ნათელი რეჟიმი">
+                    <i class="ph-bold ph-moon"></i>
+                </button>
+            </div>
+            <div><strong style="font-size: 18px;">EMIS Call Center</strong></div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="width: 10px; height: 10px; background: var(--success); border-radius: 50%;"></span>
+                <span>ხაზზეა: <strong id="myExt"></strong></span>
+            </div>
+        </div>
+
+        <div class="dash-body">
+            <div class="sidebar">
+                <div class="sidebar-stats">
+                    <div class="stat-box"><span>დღეს</span><strong id="opTodayCalls">0</strong></div>
+                    <div class="stat-box"><span>ტასკები</span><strong id="opPendingCalls" style="color: var(--warning);">0</strong></div>
+                </div>
+                <h3 style="font-size: 12px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 10px;">ისტორია (ბოლო 40)</h3>
+                <ul id="operatorHistoryList" class="history-list"></ul>
+            </div>
+
+            <div class="call-workspace">
+                
+                <div id="standbyMode" class="tasks-dashboard">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 style="margin: 0; color: var(--text-main); font-size: 20px;"><i class="ph-bold ph-kanban"></i> ჩემი დავალებები (Pending)</h2>
+                    </div>
+                    <div class="task-grid" id="taskGrid"></div>
+                </div>
+
+                <div id="activeCallMode" class="call-active-card">
+                    <div class="call-header">
+                        <div class="call-pulse" id="callPulseIcon"></div>
+                        <div>
+                            <div style="font-size: 12px; color: var(--text-muted);" id="callModeLabel">მიმდინარე ზარი</div>
+                            <h2 style="margin: 0; font-size: 26px; font-weight: 700;" id="callerNumberText"></h2>
+                        </div>
+                    </div>
+                    <div id="lastCallInfoBanner" class="last-call-banner" style="display: none;">
+                        <h4><i class="ph-bold ph-clock-counter-clockwise"></i> წინა ზარის ისტორია ამ ნომერზე</h4>
+                        <div class="last-call-grid">
+                            <div class="last-call-item"><span>თარიღი და დრო</span><strong id="lcDate"></strong></div>
+                            <div class="last-call-item"><span>ოპერატორი</span><strong id="lcOp"></strong></div>
+                            <div class="last-call-item" style="grid-column: 1 / -1;"><span>კატეგორია / თეგი</span><strong id="lcCat"></strong></div>
+                            <div class="last-call-comment" id="lcComment"></div>
+                        </div>
+                    </div>
+
+                    <input type="hidden" id="currentEditId" value="">
+
+                    <div class="form-group" style="background: #f0fdf4; padding: 16px; border-radius: 12px; border: 1px dashed #4ade80;">
+                        <label style="color: #166534;"><i class="ph-bold ph-user"></i> აბონენტის სახელი</label>
+                        <input type="text" id="clientNameInput" class="form-control" style="background: white;" placeholder="ჩაწერეთ სახელი...">
+                    </div>
+
+                    <div class="form-group">
+                        <label>კატეგორია <span style="color: var(--danger);">*</span></label>
+                        <select id="wrapCategory" class="form-control"></select>
+                    </div>
+
+                    <div class="form-group" style="display: flex; gap: 20px;">
+                        <div style="flex: 1;">
+                            <label>პრიორიტეტი</label>
+                            <div class="chip-group" id="priorityGroup">
+                                <div class="chip priority-normal active" onclick="selectPriority(this, 'ნორმალური')">ნორმალური</div>
+                                <div class="chip priority-high" onclick="selectPriority(this, 'მაღალი')">მაღალი</div>
+                                <div class="chip priority-critical" onclick="selectPriority(this, 'კრიტიკული')">კრიტიკული</div>
+                            </div>
+                            <input type="hidden" id="wrapPriority" value="ნორმალური">
+                        </div>
+                        <div style="flex: 1;">
+                            <label>თეგი</label>
+                            <div class="chip-group" id="tagGroup"></div>
+                            <input type="hidden" id="wrapTag" value="">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>კომენტარი</label>
+                        <textarea id="wrapComment" class="form-control" placeholder="ჩაწერეთ ზარის დეტალები..."></textarea>
+                    </div>
+
+                    <div class="form-group" style="display: flex; gap: 15px; background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid var(--border);">
+    <div style="flex: 1;">
+        <label><i class="ph-bold ph-list-checks"></i> დავალების სტატუსი</label>
+        <select id="wrapTaskStatus" class="form-control"></select>
+    </div>
+    <div style="flex: 1; display: flex; align-items: flex-end;">
+        <button id="jiraBtn" class="btn-primary" style="background: #0052CC; width: 100%;" onclick="sendToJira()">
+            <i class="ph-bold ph-paper-plane-tilt"></i> Jira-ში გაგზავნა
+        </button>
+    </div>
+</div>
+
+                    <div style="display: flex; gap: 12px; margin-top: 30px;">
+                        <button class="btn-primary" style="flex: 2;" onclick="saveCallRecord()"><i class="ph-bold ph-floppy-disk"></i> შენახვა და დახურვა</button>
+                        <button class="btn-primary" style="flex: 1; background: #94a3b8; color: white;" onclick="cancelEdit()">გაუქმება</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>
