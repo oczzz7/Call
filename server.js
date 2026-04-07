@@ -32,16 +32,66 @@ db.serialize(() => {
             db.run("INSERT INTO statuses (name) VALUES ('დასრულებული'), ('შესავსებია'), ('გადასარეკი')");
         }
     });
+
+    // 📌 ახალი ცხრილები ადმინ პანელისთვის (გუნდები, იუზერები, SIP-ები)
+    db.run(`CREATE TABLE IF NOT EXISTS teams (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        full_name TEXT NOT NULL,
+        team_id INTEGER,
+        is_active INTEGER DEFAULT 1,
+        FOREIGN KEY(team_id) REFERENCES teams(id)
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS extensions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sip_number TEXT UNIQUE NOT NULL,
+        user_id INTEGER,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )`);
+
+    // სატესტოდ: თუ extensions ცხრილი ცარიელია, ვამატებთ სტანდარტულ ნომრებს
+    db.get("SELECT COUNT(*) AS count FROM extensions", (err, row) => {
+        if (row && row.count === 0) {
+            const initialSips = ['1001', '1002', '1003', '1004', '2001'];
+            const stmt = db.prepare("INSERT INTO extensions (sip_number) VALUES (?)");
+            initialSips.forEach(sip => stmt.run(sip));
+            stmt.finalize();
+            console.log("✅ სატესტო SIP ნომრები დაემატა ბაზაში.");
+        }
+    });
 });
 
 const connectedOperators = new Map();
 
+// 📌 სოკეტების ლოგიკა (განახლებული ლოგინით)
 io.on('connection', (socket) => {
-    socket.on('register_operator', (ext) => {
-        socket.join(`ext_${ext}`);
-        connectedOperators.set(socket.id, ext);
-        io.emit('active_operators', Array.from(new Set(connectedOperators.values())));
+    
+    // როცა ფრონტიდან მოდის ლოგინის მოთხოვნა
+    socket.on('request_login', (ext) => {
+        // ვამოწმებთ ბაზაში, არის თუ არა დაშვებული ეს ნომერი
+        db.get("SELECT * FROM extensions WHERE sip_number = ?", [ext], (err, row) => {
+            if (err) {
+                socket.emit('login_error', 'სერვერის შეცდომა მონაცემთა ბაზასთან.');
+                return;
+            }
+            if (row) {
+                // ნომერი ვალიდურია -> ვუშვებთ სისტემაში
+                socket.join(`ext_${ext}`);
+                connectedOperators.set(socket.id, ext);
+                io.emit('active_operators', Array.from(new Set(connectedOperators.values())));
+                socket.emit('login_success', ext);
+            } else {
+                // ნომერი არ არის დაშვებული
+                socket.emit('login_error', 'SIP ნომერი არ არის დაშვებული!');
+            }
+        });
     });
+
     socket.on('disconnect', () => {
         if (connectedOperators.has(socket.id)) {
             connectedOperators.delete(socket.id);
@@ -50,18 +100,46 @@ io.on('connection', (socket) => {
     });
 });
 
+
 // --- API: WEBHOOK (Asterisk) ---
 app.get('/api/webhook/call', (req, res) => {
     const { ext, caller } = req.query;
     if (!ext || !caller) return res.status(400).json({ error: "Missing parameters" });
 
-    io.to(`ext_${ext}`).emit('incoming_call', { caller_number: caller, operator_ext: ext, timestamp: new Date().toLocaleTimeString('ka-GE', {hour: '2-digit', minute:'2-digit'}) });
-    io.emit('admin_new_call_alert', { ext, caller });
-    res.status(200).send('Event Received'); 
-});
+    // 📌 1. ფილტრაცია ბაზით (ნაცვლად წაშლილი VALID_OPERATORS მასივისა)
+    db.get("SELECT * FROM extensions WHERE sip_number = ?", [ext], (err, row) => {
+        if (!row) {
+            console.log(`[Webhook] იგნორირებულია ზარი ${caller}-დან. ოპერატორი ${ext} არ არის სისტემაში.`);
+            return res.status(200).send('Ignored');
+        }
 
-app.get('/api/client/:number', (req, res) => {
-    db.get('SELECT name FROM clients WHERE number = ?', [req.params.number], (err, row) => res.json({ name: row ? row.name : null }));
+        console.log(`[Webhook] მიღებულია ზარი: ${caller} -> ${ext}. ვინახავთ ბაზაში ეგრევე...`);
+
+        const tzOffset = new Date().getTimezoneOffset() * 60000;
+        const localDate = (new Date(new Date() - tzOffset)).toISOString().split('T')[0];
+        const localTime = new Date().toLocaleTimeString('ka-GE', {hour: '2-digit', minute:'2-digit'});
+
+        const sql = `INSERT INTO call_details (caller_number, operator_ext, date, time, category, tag, priority, comment, task_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+        db.run(sql, [caller, ext, localDate, localTime, 'დაუხარისხებელი', '', 'ნორმალური', '', 'შესავსებია'], function(err) {
+            if (err) {
+                console.error("[DB Error]", err);
+                return res.status(500).send('Database Error');
+            }
+
+            const newCallId = this.lastID;
+
+            io.to(`ext_${ext}`).emit('incoming_call', { 
+                call_id: newCallId,
+                caller_number: caller, 
+                operator_ext: ext, 
+                timestamp: localTime 
+            });
+            
+            io.emit('admin_data_updated'); 
+            res.status(200).send('Saved and Emitted'); 
+        });
+    });
 });
 
 // --- API: ზარის შენახვა / განახლება ---
@@ -95,7 +173,6 @@ app.post('/api/save-call', (req, res) => {
 });
 
 // --- API: JIRA ინტეგრაცია ---
-// --- API: JIRA ინტეგრაცია (ერთი კლიკით) ---
 app.post('/api/jira/create', async (req, res) => {
     const { caller, client, category, comment, operator } = req.body;
     
@@ -109,10 +186,8 @@ app.post('/api/jira/create', async (req, res) => {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
-                // 📌 აი აქ ჩაჯდა შენი სეკრეტი ზუსტად ისე, როგორც შენს მოწოდებულ დოკუმენტაციაში ეწერა!
                 'X-Automation-Webhook-Token': token 
             },
-            // ვაგზავნით მონაცემებს JIRA-სთვის გასაგებ ენაზე
             body: JSON.stringify({
                 caller: caller || "უცნობი",
                 client: client || "უცნობი აბონენტი",
@@ -135,14 +210,15 @@ app.post('/api/jira/create', async (req, res) => {
         res.status(500).json({ success: false });
     }
 });
+
 // --- API: წინა ზარის ისტორიის ძებნა ---
 app.get('/api/last-call/:number', (req, res) => {
-    // ვეძებთ ამ ნომრის ბოლო ზარს (ORDER BY id DESC LIMIT 1)
     db.get('SELECT * FROM call_details WHERE caller_number = ? ORDER BY id DESC LIMIT 1', [req.params.number], (err, row) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.json(row || null); // თუ იპოვა დააბრუნებს, თუ არა - null
+        res.json(row || null); 
     });
 });
+
 // --- API: ადმინისა და პარამეტრების მართვა ---
 app.get('/api/operator-calls', (req, res) => db.all(`SELECT * FROM call_details WHERE operator_ext = ? ORDER BY id DESC LIMIT 40`, [req.query.ext], (err, rows) => res.json(rows || [])));
 app.get('/api/admin/calls', (req, res) => db.all(`SELECT * FROM call_details ORDER BY id DESC`, [], (err, rows) => res.json(rows || [])));
@@ -153,6 +229,24 @@ app.get('/api/categories', (req, res) => {
         if (!req.query.ext) return res.json(rows || []);
         res.json((rows || []).filter(r => !r.allowed_exts || r.allowed_exts.split(',').map(s=>s.trim()).includes(req.query.ext)));
     });
+});
+// --- API: SIP ნომრების (Whitelist) მართვა ---
+app.get('/api/extensions', (req, res) => {
+    db.all(`SELECT * FROM extensions`, [], (err, rows) => res.json(rows || []));
+});
+
+app.post('/api/extensions', (req, res) => {
+    const sip = req.body.sip_number;
+    if (!sip) return res.status(400).json({ error: "ნომერი порожний" });
+
+    db.run(`INSERT INTO extensions (sip_number) VALUES (?)`, [sip], function(err) {
+        if (err) return res.status(400).json({ error: "ეს ნომერი უკვე არსებობს ბაზაში" });
+        res.json({ success: true, id: this.lastID, sip_number: sip });
+    });
+});
+
+app.delete('/api/extensions/:id', (req, res) => {
+    db.run(`DELETE FROM extensions WHERE id=?`, [req.params.id], (err) => res.json({ success: !err }));
 });
 app.post('/api/categories', (req, res) => { db.run('INSERT INTO categories (name, allowed_exts) VALUES (?, ?)', [req.body.name, req.body.allowed_exts], (err) => { io.emit('settings_updated'); res.json({ success: !err }); }); });
 app.delete('/api/categories/:id', (req, res) => { db.run('DELETE FROM categories WHERE id=?', [req.params.id], (err) => { io.emit('settings_updated'); res.json({ success: !err }); }); });

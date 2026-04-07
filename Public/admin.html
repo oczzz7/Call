@@ -85,6 +85,19 @@
                     </div>
                     <ul id="adminStatusList" class="ops-list settings-list"></ul>
                 </div>
+                <div class="admin-card">
+    <h3><i class="ph-bold ph-phone"></i> დაშვებული SIP ნომრები (Whitelist)</h3>
+    
+    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+        <input type="text" id="newSipInput" class="form-control" placeholder="ახალი SIP ნომერი (მაგ: 9307)">
+        <button class="btn-primary" onclick="addSipExtension()">
+            <i class="ph-bold ph-plus"></i> დამატება
+        </button>
+    </div>
+
+    <ul id="sipExtensionsList" class="admin-list" style="list-style: none; padding: 0;">
+        </ul>
+</div>
             </div>
         </main>
     </div>

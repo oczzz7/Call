@@ -151,3 +151,60 @@ fetch('/api/admin/online').then(r=>r.json()).then(ops => {
     const list = document.getElementById('onlineOperatorsList');
     if(ops.length > 0) list.innerHTML = ops.map(ext => `<li><span class="live-dot"></span> ოპერატორი ${ext}</li>`).join('');
 });
+// 📌 SIP ნომრების ჩატვირთვა
+async function loadSipExtensions() {
+    try {
+        const res = await fetch('/api/extensions');
+        const extensions = await res.json();
+        
+        const list = document.getElementById('sipExtensionsList');
+        list.innerHTML = extensions.map(ext => `
+            <li style="display: flex; justify-content: space-between; padding: 10px; background: var(--input-bg); margin-bottom: 5px; border-radius: 8px;">
+                <span><strong>${ext.sip_number}</strong></span>
+                <button style="background: #ef4444; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;" 
+                        onclick="deleteSipExtension(${ext.id})">
+                    <i class="ph-bold ph-trash"></i>
+                </button>
+            </li>
+        `).join('');
+    } catch (e) {
+        console.error("ვერ ჩაიტვირთება ნომრები", e);
+    }
+}
+
+// 📌 ახალი ნომრის დამატება
+async function addSipExtension() {
+    const input = document.getElementById('newSipInput');
+    const sip_number = input.value.trim();
+    if (!sip_number) return;
+
+    try {
+        const res = await fetch('/api/extensions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sip_number })
+        });
+        
+        const data = await res.json();
+        if (data.success) {
+            input.value = '';
+            loadSipExtensions(); // ვაახლებთ სიას
+        } else {
+            alert(data.error || "დამატება ვერ მოხერხდა");
+        }
+    } catch (e) { console.error(e); }
+}
+
+// 📌 ნომრის წაშლა
+async function deleteSipExtension(id) {
+    if (!confirm("ნამდვილად გსურთ ამ ნომრის წაშლა?")) return;
+    try {
+        await fetch(`/api/extensions/${id}`, { method: 'DELETE' });
+        loadSipExtensions(); // ვაახლებთ სიას
+    } catch (e) { console.error(e); }
+}
+
+// გვერდის ჩატვირთვისას გამოვიძახოთ სია
+document.addEventListener('DOMContentLoaded', () => {
+    loadSipExtensions();
+});

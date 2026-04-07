@@ -1,3 +1,17 @@
+const socket = io();
+let currentExt = "";
+let currentCaller = "";
+let currentOperatorCalls = [];
+
+// 📌 სესიის აღდგენა Refresh-ის დროს
+document.addEventListener('DOMContentLoaded', () => {
+    const savedSip = localStorage.getItem('userSip');
+    if (savedSip) {
+        // თუ მეხსიერებაშია, სერვერს ვთხოვთ ავტორიზაციას
+        socket.emit('request_login', savedSip); 
+    }
+});
+
 // 📌 Theme Toggle Logic
 function toggleTheme() {
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -7,16 +21,17 @@ function toggleTheme() {
 }
 if (localStorage.getItem('theme') === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
 
-const socket = io();
-let currentExt = "";
-let currentCaller = "";
-let currentOperatorCalls = [];
-
-function connectOperator() {
+// 📌 შესვლა სისტემაში (მხოლოდ მოთხოვნის გაგზავნა)
+window.connectOperator = function() {
     const ext = document.getElementById('extInput').value.trim();
     if (!ext) return;
+    socket.emit('request_login', ext);
+};
+
+// 📌 სერვერის პასუხი წარმატებულ ლოგინზე
+socket.on('login_success', (ext) => {
     currentExt = ext;
-    socket.emit('register_operator', currentExt);
+    localStorage.setItem('userSip', currentExt); // ვინახავთ Refresh-ისთვის
 
     document.getElementById('loginBlock').style.display = 'none';
     document.getElementById('workspace').style.display = 'flex';
@@ -24,23 +39,24 @@ function connectOperator() {
     
     loadDynamicOptions();
     loadOperatorHistory();
-}
+});
+
+// 📌 სერვერის პასუხი შეცდომაზე
+socket.on('login_error', (message) => {
+    alert(message);
+    localStorage.removeItem('userSip'); // ყოველი შემთხვევისთვის
+});
+
+// 📌 სისტემიდან გამოსვლა (შეგიძლია ღილაკზე მიაბა)
+window.logoutOperator = function() {
+    localStorage.removeItem('userSip');
+    location.reload(); // ვარეფრეშებთ გვერდს, რაც ლოგინის ფანჯარაზე დაგვაბრუნებს
+};
 
 // 📌 1. ზარის შემოსვლა
 socket.on('incoming_call', async (data) => {
     if (currentCaller && document.getElementById('activeCallMode').style.display === 'block') {
-        const payload = {
-            id: document.getElementById('currentEditId').value || null,
-            caller_number: currentCaller,
-            client_name: document.getElementById('clientNameInput').value.trim(),
-            operator_ext: currentExt,
-            category: document.getElementById('wrapCategory').value || 'დაუხარისხებელი',
-            priority: document.getElementById('wrapPriority').value,
-            tags: document.getElementById('wrapTag').value,
-            comment: document.getElementById('wrapComment').value,
-            task_status: 'შესავსებია'
-        };
-        await fetch('/api/save-call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        saveCallRecord(false); 
     }
 
     currentCaller = data.caller_number;
@@ -54,15 +70,31 @@ socket.on('incoming_call', async (data) => {
     
     clearForm();
 
+    if (data.call_id) {
+        document.getElementById('currentEditId').value = data.call_id;
+    }
+
     const nameInput = document.getElementById('clientNameInput');
     nameInput.disabled = true;
-   // 📌 წინა ზარის მოძიება და ბანერის დახატვა
+    try {
+        const res = await fetch(`/api/client/${currentCaller}`);
+        const client = await res.json();
+        nameInput.disabled = false;
+        if (client.name) {
+            nameInput.value = client.name;
+            nameInput.style.borderColor = '#4ade80';
+        } else {
+            nameInput.value = '';
+            nameInput.style.borderColor = 'var(--border)';
+        }
+    } catch (e) { nameInput.disabled = false; nameInput.value = ''; }
+
     try {
         const lcRes = await fetch(`/api/last-call/${currentCaller}`);
         const lastCall = await lcRes.json();
         const banner = document.getElementById('lastCallInfoBanner');
         
-        if (lastCall) {
+        if (lastCall && lastCall.id !== data.call_id && lastCall.category !== 'დაუხარისხებელი') {
             document.getElementById('lcDate').innerText = `${lastCall.date} ${lastCall.time}`;
             document.getElementById('lcOp').innerText = `შიდა ნომერი: ${lastCall.operator_ext}`;
             document.getElementById('lcCat').innerText = `${lastCall.category} ${lastCall.tag ? ' (#'+lastCall.tag+')' : ''}`;
@@ -72,11 +104,13 @@ socket.on('incoming_call', async (data) => {
             banner.style.display = 'none';
         }
     } catch (e) {
-        document.getElementById('lastCallInfoBanner').style.display = 'none';
+        if(document.getElementById('lastCallInfoBanner')) {
+            document.getElementById('lastCallInfoBanner').style.display = 'none';
+        }
     }
 });
 
-function clearForm() {
+window.clearForm = function() {
     document.getElementById('currentEditId').value = ''; 
     document.getElementById('wrapCategory').value = '';
     document.getElementById('wrapComment').value = '';
@@ -99,8 +133,10 @@ function clearForm() {
         jiraBtn.disabled = false;
         jiraBtn.style.cursor = 'pointer';
     }
-    document.getElementById('lastCallInfoBanner').style.display = 'none';
-}
+
+    const banner = document.getElementById('lastCallInfoBanner');
+    if (banner) banner.style.display = 'none';
+};
 
 // 📌 2. შენახვა
 window.saveCallRecord = async function(closeAfter = true) {
@@ -136,8 +172,8 @@ window.saveCallRecord = async function(closeAfter = true) {
     } catch (error) { console.error(error); }
 };
 
-// 📌 3. ისტორია და ტასკების დაფა (Jira ბეიჯების დამატებით)
-async function loadOperatorHistory() {
+// 📌 3. ისტორია და ტასკების დაფა
+window.loadOperatorHistory = async function() {
     if (!currentExt) return;
     try {
         const response = await fetch(`/api/operator-calls?ext=${currentExt}`);
@@ -149,7 +185,6 @@ async function loadOperatorHistory() {
             const catClass = c.category === 'დაუხარისხებელი' ? 'unclassified' : '';
             const tagHtml = c.tag ? `<span class="tag-badge"><i class="ph-bold ph-hash"></i> ${c.tag}</span>` : '';
             
-            // 📌 ამოწმებს გაშვებულია თუ არა ჯირაში
             const isJiraSent = c.comment && c.comment.includes('[Jira ✓]');
             const jiraHtml = isJiraSent ? `<span class="jira-badge" title="გაგზავნილია Jira-ში"><i class="ph-bold ph-check-circle"></i> Jira</span>` : '';
 
@@ -213,14 +248,13 @@ async function loadOperatorHistory() {
             }).join('');
         }
     } catch (e) { console.error(e); }
-}
+};
 
 window.editTask = async function(id) {
     const call = currentOperatorCalls.find(c => c.id === id);
     if (!call) return;
 
     currentCaller = call.caller_number;
-    document.getElementById('lastCallInfoBanner').style.display = 'none';
     
     document.getElementById('standbyMode').style.display = 'none';
     document.getElementById('activeCallMode').style.display = 'block';
@@ -249,6 +283,9 @@ window.editTask = async function(id) {
         jiraBtn.disabled = false;
         jiraBtn.style.cursor = 'pointer';
     }
+    
+    const banner = document.getElementById('lastCallInfoBanner');
+    if (banner) banner.style.display = 'none';
 
     try {
         const res = await fetch(`/api/client/${call.caller_number}`);
@@ -305,7 +342,6 @@ window.sendToJira = async function() {
                 commentBox.value = "[Jira ✓] \n" + commentBox.value; 
             }
             
-            // ვინახავთ და ვაახლებთ სიას ეგრევე, რომ ბეიჯი გამოჩნდეს
             await saveCallRecord(false);
 
         } else {
@@ -329,7 +365,7 @@ window.sendToJira = async function() {
 window.selectPriority = function(el, val) { if(!el) return; document.querySelectorAll('#priorityGroup .chip').forEach(e => e.classList.remove('active')); el.classList.add('active'); document.getElementById('wrapPriority').value = val; };
 window.selectTag = function(el, val) { if(!el) return; if (el.classList.contains('active')) { el.classList.remove('active'); document.getElementById('wrapTag').value = ''; } else { document.querySelectorAll('#tagGroup .chip').forEach(e => e.classList.remove('active')); el.classList.add('active'); document.getElementById('wrapTag').value = val; } };
 
-async function loadDynamicOptions() {
+window.loadDynamicOptions = async function() {
     if (!currentExt) return;
     try {
         const catRes = await fetch(`/api/categories?ext=${currentExt}`);
@@ -345,4 +381,5 @@ async function loadDynamicOptions() {
         document.getElementById('wrapTaskStatus').innerHTML = statuses.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
     } catch (e) {}
 }
+
 socket.on('settings_updated', loadDynamicOptions);
