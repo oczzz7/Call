@@ -3,16 +3,13 @@ let currentExt = "";
 let currentCaller = "";
 let currentOperatorCalls = [];
 
-// 📌 სესიის აღდგენა Refresh-ის დროს
 document.addEventListener('DOMContentLoaded', () => {
     const savedSip = localStorage.getItem('userSip');
     if (savedSip) {
-        // თუ მეხსიერებაშია, სერვერს ვთხოვთ ავტორიზაციას
         socket.emit('request_login', savedSip); 
     }
 });
 
-// 📌 Theme Toggle Logic
 function toggleTheme() {
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     const target = isDark ? 'light' : 'dark';
@@ -21,17 +18,15 @@ function toggleTheme() {
 }
 if (localStorage.getItem('theme') === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
 
-// 📌 შესვლა სისტემაში (მხოლოდ მოთხოვნის გაგზავნა)
 window.connectOperator = function() {
     const ext = document.getElementById('extInput').value.trim();
     if (!ext) return;
     socket.emit('request_login', ext);
 };
 
-// 📌 სერვერის პასუხი წარმატებულ ლოგინზე
 socket.on('login_success', (ext) => {
     currentExt = ext;
-    localStorage.setItem('userSip', currentExt); // ვინახავთ Refresh-ისთვის
+    localStorage.setItem('userSip', currentExt);
 
     document.getElementById('loginBlock').style.display = 'none';
     document.getElementById('workspace').style.display = 'flex';
@@ -41,19 +36,17 @@ socket.on('login_success', (ext) => {
     loadOperatorHistory();
 });
 
-// 📌 სერვერის პასუხი შეცდომაზე
 socket.on('login_error', (message) => {
     alert(message);
-    localStorage.removeItem('userSip'); // ყოველი შემთხვევისთვის
+    localStorage.removeItem('userSip');
 });
 
-// 📌 სისტემიდან გამოსვლა (შეგიძლია ღილაკზე მიაბა)
 window.logoutOperator = function() {
     localStorage.removeItem('userSip');
-    location.reload(); // ვარეფრეშებთ გვერდს, რაც ლოგინის ფანჯარაზე დაგვაბრუნებს
+    location.reload(); 
 };
 
-// 📌 1. ზარის შემოსვლა
+// 📌 1. ზარის შემოსვლა (ახალი ლოგიკით)
 socket.on('incoming_call', async (data) => {
     if (currentCaller && document.getElementById('activeCallMode').style.display === 'block') {
         saveCallRecord(false); 
@@ -64,7 +57,7 @@ socket.on('incoming_call', async (data) => {
     document.getElementById('standbyMode').style.display = 'none';
     document.getElementById('activeCallMode').style.display = 'block';
     
-    document.getElementById('callModeLabel').innerText = "მიმდინარე ზარი";
+    document.getElementById('callModeLabel').innerText = "მიმდინარე ახალი ზარი";
     document.getElementById('callPulseIcon').style.display = "block";
     document.getElementById('callerNumberText').innerText = currentCaller;
     
@@ -74,39 +67,45 @@ socket.on('incoming_call', async (data) => {
         document.getElementById('currentEditId').value = data.call_id;
     }
 
+    // 📌 ფორმაში სახელი რჩება ცარიელი, რომ თავიდან შეივსოს საჭიროებისამებრ
     const nameInput = document.getElementById('clientNameInput');
-    nameInput.disabled = true;
+    nameInput.disabled = false;
+    nameInput.value = '';
+    nameInput.style.borderColor = 'var(--border)';
+
+    let savedName = "უცნობი აბონენტი";
     try {
         const res = await fetch(`/api/client/${currentCaller}`);
         const client = await res.json();
-        nameInput.disabled = false;
-        if (client.name) {
-            nameInput.value = client.name;
-            nameInput.style.borderColor = '#4ade80';
-        } else {
-            nameInput.value = '';
-            nameInput.style.borderColor = 'var(--border)';
-        }
-    } catch (e) { nameInput.disabled = false; nameInput.value = ''; }
+        if (client.name) savedName = client.name;
+    } catch (e) {}
 
+    // 📌 წინა ზარის დეტალების შემოწმება და ყვითელ ნოუთში გამოტანა
     try {
-        const lcRes = await fetch(`/api/last-call/${currentCaller}`);
+        // ვაგზავნით მიმდინარე ზარის ID-ს, რათა ბექენდმა ამოიღოს ნამდვილად წინა ზარი!
+        const lcRes = await fetch(`/api/last-call/${currentCaller}?excludeId=${data.call_id || ''}`);
         const lastCall = await lcRes.json();
         const banner = document.getElementById('lastCallInfoBanner');
         
-        if (lastCall && lastCall.id !== data.call_id && lastCall.category !== 'დაუხარისხებელი') {
+        // თუ ისტორია მოიძებნა
+        if (lastCall) {
+            document.getElementById('lcName').innerText = savedName;
             document.getElementById('lcDate').innerText = `${lastCall.date} ${lastCall.time}`;
-            document.getElementById('lcOp').innerText = `შიდა ნომერი: ${lastCall.operator_ext}`;
-            document.getElementById('lcCat').innerText = `${lastCall.category} ${lastCall.tag ? ' (#'+lastCall.tag+')' : ''}`;
-            document.getElementById('lcComment').innerText = `"${lastCall.comment || 'კომენტარის გარეშე'}"`;
+            document.getElementById('lcOp').innerText = lastCall.operator_ext;
+            
+            const catText = lastCall.category !== 'დაუხარისხებელი' ? lastCall.category : 'არ აქვს კატეგორია';
+            const tagText = lastCall.tag ? ` (#${lastCall.tag})` : '';
+            document.getElementById('lcCat').innerText = catText + tagText;
+            
+            document.getElementById('lcPriority').innerText = lastCall.priority || 'ნორმალური';
+            document.getElementById('lcComment').innerText = lastCall.comment ? `"${lastCall.comment}"` : "კომენტარი არ არის დატოვებული...";
+            
             banner.style.display = 'block';
         } else {
             banner.style.display = 'none';
         }
     } catch (e) {
-        if(document.getElementById('lastCallInfoBanner')) {
-            document.getElementById('lastCallInfoBanner').style.display = 'none';
-        }
+        document.getElementById('lastCallInfoBanner').style.display = 'none';
     }
 });
 
@@ -114,13 +113,14 @@ window.clearForm = function() {
     document.getElementById('currentEditId').value = ''; 
     document.getElementById('wrapCategory').value = '';
     document.getElementById('wrapComment').value = '';
+    document.getElementById('clientNameInput').value = '';
     
     const statusSelect = document.getElementById('wrapTaskStatus');
     if(statusSelect.options.length > 0) statusSelect.selectedIndex = 0;
     
     document.getElementById('wrapPriority').value = 'ნორმალური';
     document.querySelectorAll('#priorityGroup .chip').forEach(el => el.classList.remove('active'));
-    const normalChip = document.querySelector('#priorityGroup .chip.priority-normal');
+    const normalChip = document.querySelector('#priorityGroup .chip[data-val="ნორმალური"]');
     if(normalChip) normalChip.classList.add('active');
 
     document.getElementById('wrapTag').value = '';
@@ -177,54 +177,19 @@ window.loadOperatorHistory = async function() {
     if (!currentExt) return;
     try {
         const response = await fetch(`/api/operator-calls?ext=${currentExt}`);
-        const calls = await response.json();
-        currentOperatorCalls = calls; 
+        currentOperatorCalls = await response.json(); 
 
-        const list = document.getElementById('operatorHistoryList');
-        list.innerHTML = calls.map(c => {
-            const catClass = c.category === 'დაუხარისხებელი' ? 'unclassified' : '';
-            const tagHtml = c.tag ? `<span class="tag-badge"><i class="ph-bold ph-hash"></i> ${c.tag}</span>` : '';
-            
-            const isJiraSent = c.comment && c.comment.includes('[Jira ✓]');
-            const jiraHtml = isJiraSent ? `<span class="jira-badge" title="გაგზავნილია Jira-ში"><i class="ph-bold ph-check-circle"></i> Jira</span>` : '';
-
-            let statusColor = 'var(--text-muted)';
-            let statusIcon = 'ph-info';
-            
-            if (c.task_status === 'დასრულებული') { statusColor = 'var(--success)'; statusIcon = 'ph-check-circle'; } 
-            else if (c.task_status === 'შესავსებია') { statusColor = 'var(--warning)'; statusIcon = 'ph-warning-circle'; } 
-            else if (c.task_status === 'გადასარეკი') { statusColor = 'var(--primary)'; statusIcon = 'ph-phone-call'; }
-
-            return `
-            <li class="history-item" style="border-left: 4px solid ${statusColor};" onclick="editTask(${c.id})">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
-                    <strong style="font-size: 14px; color: var(--text-main); margin:0;">
-                        <i class="ph-bold ph-phone"></i> ${c.caller_number}
-                    </strong>
-                    <span style="color: ${statusColor}; font-size: 11px; font-weight: 700; display:flex; align-items:center; gap:4px; text-transform: uppercase;">
-                        <i class="ph-bold ${statusIcon}"></i> ${c.task_status}
-                    </span>
-                </div>
-                <div class="meta" style="display:flex; justify-content:space-between; align-items:flex-end;">
-                    <span style="font-size:11px; color:var(--text-muted);"><i class="ph-bold ph-clock"></i> ${c.time}</span>
-                    <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; max-width: 70%;">
-                        <span class="cat-badge ${catClass}">${c.category || 'ზოგადი'}</span>
-                        ${tagHtml}
-                        ${jiraHtml}
-                    </div>
-                </div>
-            </li>`;
-        }).join('');
-
-        const todayStr = new Date().toISOString().split('T')[0];
-        document.getElementById('opTodayCalls').innerText = calls.filter(c => c.date === todayStr).length;
+        renderOperatorHistory();
         
-        const pendingCalls = calls.filter(c => c.task_status !== 'დასრულებული');
+        const todayStr = new Date().toISOString().split('T')[0];
+        document.getElementById('opTodayCalls').innerText = currentOperatorCalls.filter(c => c.date === todayStr).length;
+        
+        const pendingCalls = currentOperatorCalls.filter(c => c.task_status !== 'დასრულებული');
         document.getElementById('opPendingCalls').innerText = pendingCalls.length;
         
         const grid = document.getElementById('taskGrid');
         if (pendingCalls.length === 0) {
-            grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; color:var(--text-muted); padding:40px; border: 2px dashed var(--border); border-radius: 16px;">დავალებები არ გაქვთ, ყველაფერი სუფთაა! ✨</div>';
+            grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; color:var(--text-muted); padding:40px; border: 2px dashed var(--border); border-radius: 16px;">მიმდინარე დავალებები არ გაქვთ!✨</div>';
         } else {
             grid.innerHTML = pendingCalls.map(c => {
                 const isJiraSent = c.comment && c.comment.includes('[Jira ✓]');
@@ -250,6 +215,56 @@ window.loadOperatorHistory = async function() {
     } catch (e) { console.error(e); }
 };
 
+// 📌 ფილტრაციის ფუნქცია (კატეგორია და სტატუსი)
+window.renderOperatorHistory = function() {
+    const catFilter = document.getElementById('historyFilter').value;
+    const statFilter = document.getElementById('statusFilter').value;
+    const list = document.getElementById('operatorHistoryList');
+    
+    const filteredCalls = currentOperatorCalls.filter(c => {
+        const matchCat = catFilter === 'all' || c.category === catFilter;
+        const matchStat = statFilter === 'all' || c.task_status === statFilter;
+        return matchCat && matchStat;
+    });
+
+    list.innerHTML = filteredCalls.map(c => {
+        let statusColor = 'var(--text-muted)';
+        let statusIcon = 'ph-info';
+        
+        if (c.task_status === 'დასრულებული') { statusColor = 'var(--success)'; statusIcon = 'ph-check-circle'; } 
+        else if (c.task_status === 'შესავსებია') { statusColor = 'var(--warning)'; statusIcon = 'ph-warning-circle'; } 
+        else if (c.task_status === 'გადასარეკი') { statusColor = 'var(--primary)'; statusIcon = 'ph-phone-call'; }
+
+        return `
+        <li class="history-item" style="border-left: 4px solid ${statusColor};" onclick="editTask(${c.id})">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+                <strong style="font-size: 14px; color: var(--text-main); margin:0; display:flex; align-items:center; gap:8px;">
+                    <i class="ph-bold ph-phone"></i> ${c.caller_number}
+                    
+                    <button onclick="event.stopPropagation(); initiateCall('${c.caller_number}')" 
+                            style="background:none; border:none; cursor:pointer; color:var(--success); padding:0; font-size:16px;" 
+                            title="დარეკვა">
+                        <i class="ph-bold ph-phone-outgoing"></i>
+                    </button>
+                    
+                    <button onclick="event.stopPropagation(); playRecording('${c.id}')" 
+                            style="background:none; border:none; cursor:pointer; color:var(--primary); padding:0; font-size:16px;" 
+                            title="ჩანაწერის მოსმენა">
+                        <i class="ph-bold ph-play-circle"></i>
+                    </button>
+                </strong>
+                <span style="color: ${statusColor}; font-size: 11px; font-weight: 700; display:flex; align-items:center; gap:4px; text-transform: uppercase;">
+                    <i class="ph-bold ${statusIcon}"></i> ${c.task_status}
+                </span>
+            </div>
+            <div class="meta" style="display:flex; justify-content:space-between; align-items:flex-end;">
+                <span style="font-size:11px; color:var(--text-muted);"><i class="ph-bold ph-clock"></i> ${c.time}</span>
+                <span class="cat-badge" style="background:var(--border)">${c.category || 'ზოგადი'}</span>
+            </div>
+        </li>`;
+    }).join('');
+};
+
 window.editTask = async function(id) {
     const call = currentOperatorCalls.find(c => c.id === id);
     if (!call) return;
@@ -268,7 +283,7 @@ window.editTask = async function(id) {
     document.getElementById('wrapComment').value = call.comment || '';
     document.getElementById('wrapTaskStatus').value = call.task_status || 'დასრულებული';
 
-    selectPriority(document.querySelector(`#priorityGroup .chip[onclick*="${call.priority || 'ნორმალური'}"]`), call.priority || 'ნორმალური');
+    selectPriority(document.querySelector(`#priorityGroup .chip[data-val="${call.priority || 'ნორმალური'}"]`), call.priority || 'ნორმალური');
     if(call.tag) selectTag(document.querySelector(`#tagGroup .chip[onclick*="${call.tag}"]`), call.tag);
 
     const jiraBtn = document.getElementById('jiraBtn');
@@ -290,7 +305,9 @@ window.editTask = async function(id) {
     try {
         const res = await fetch(`/api/client/${call.caller_number}`);
         const client = await res.json();
-        document.getElementById('clientNameInput').value = client.name || '';
+        const nameInput = document.getElementById('clientNameInput');
+        nameInput.value = client.name || '';
+        nameInput.disabled = false; // რედაქტირებისას სახელის შეცვლაც შეგეძლოს
     } catch(e) {}
 };
 
@@ -379,7 +396,49 @@ window.loadDynamicOptions = async function() {
         document.getElementById('wrapCategory').innerHTML = '<option value="" disabled selected>აირჩიეთ კატეგორია</option>' + categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
         document.getElementById('tagGroup').innerHTML = tags.map(t => `<div class="chip tag-chip" onclick="selectTag(this, '${t.name}')">${t.name}</div>`).join('');
         document.getElementById('wrapTaskStatus').innerHTML = statuses.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+        
+        // 📌 ფილტრის სელექტების განახლება
+        document.getElementById('historyFilter').innerHTML = '<option value="all">ყველა კატეგორია</option>' + categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+        document.getElementById('statusFilter').innerHTML = '<option value="all">ყველა სტატუსი</option>' + statuses.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
     } catch (e) {}
 }
 
 socket.on('settings_updated', loadDynamicOptions);
+
+window.initiateCall = function(number) {
+    alert(`📞 Asterisk-თან კავშირი მუშავდება...\nსამომავლოდ აქედან დაირეკება ნომერზე: ${number}`);
+};
+
+window.playRecording = function(id) {
+    alert(`🔊 ჩანაწერის მოსმენის ფუნქცია მალე დაემატება!\nზარის ID: ${id}`);
+};
+
+document.addEventListener('keydown', (e) => {
+    const isActiveMode = document.getElementById('activeCallMode').style.display === 'block';
+    
+    if (isActiveMode) {
+        if (e.ctrlKey && e.key.toLowerCase() === 's') {
+            e.preventDefault(); 
+            saveCallRecord();
+        }
+        
+        if (e.ctrlKey && e.key.toLowerCase() === 'j') {
+            e.preventDefault();
+            sendToJira();
+        }
+
+        if (e.key === 'Escape') {
+            cancelEdit();
+        }
+    }
+});
+
+socket.on('global_announcement', (text) => {
+    const banner = document.getElementById('globalAnnouncement');
+    if (text && text.trim() !== "") {
+        document.getElementById('announcementText').innerText = text;
+        banner.style.display = 'flex';
+    } else {
+        banner.style.display = 'none';
+    }
+});

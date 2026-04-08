@@ -3,106 +3,442 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard</title>
+    <title>ადმინის პანელი</title>
+
+<link rel="manifest" href="admin-manifest.json">
+<meta name="theme-color" content="#2563eb">
+<link rel="apple-touch-icon" href="icon-192.png">
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body>
+<body style="overflow-y: auto;">
 
-    <div class="admin-layout">
-        <aside class="admin-sidebar">
-            <h2 style="color: white; margin-bottom: 30px; font-size: 20px;">EMIS Call Center</h2>
-            <div class="online-ops-card">
-                <h3><span class="live-dot"></span> ხაზზე არიან</h3>
-                <ul id="onlineOperatorsList" class="ops-list"><li style="color: #64748b;">არავინ არ არის</li></ul>
+    <div class="dashboard">
+        <div class="dash-header">
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <i class="ph-bold ph-shield-check" style="font-size: 28px; color: var(--primary);"></i>
+                <span style="font-size: 20px; font-weight: 700;">სისტემის მართვა (Admin)</span>
             </div>
-            <button class="btn-primary" style="background: var(--success); margin-top: 20px; width: 100%;" onclick="exportCSV()">
-                <i class="ph-bold ph-download-simple"></i> ექსპორტი (CSV)
-            </button>
-        </aside>
+            <div style="display: flex; gap: 15px;">
+                <a href="/" class="btn-primary" style="background: var(--input-bg); color: var(--text-main); text-decoration: none;">
+                    <i class="ph-bold ph-headset"></i> ოპერატორის გვერდი
+                </a>
+            </div>
+        </div>
 
-        <main class="admin-main">
-            <div class="admin-header">
-                <h1 style="margin: 0; font-size: 24px;">სტატისტიკა</h1>
-                <div class="filter-group">
-                    <input type="date" id="filterStart" class="form-control" style="width: auto;">
+        <div class="admin-card" style="margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 20px;">
+                <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                    <i class="ph-bold ph-chart-line-up"></i> ზოგადი სტატისტიკა
+                </h3>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <input type="date" id="filterStartDate" class="form-control" style="width: auto;">
                     <span style="color: var(--text-muted);">-</span>
-                    <input type="date" id="filterEnd" class="form-control" style="width: auto;">
-                    <button class="btn-primary" onclick="fetchAdminData()">გაფილტვრა</button>
-                    <button class="theme-toggle" onclick="toggleTheme()" title="ბნელი/ნათელი რეჟიმი" style="margin-left: 10px;">
-                        <i class="ph-bold ph-moon"></i>
+                    <input type="date" id="filterEndDate" class="form-control" style="width: auto;">
+                    <button class="btn-primary" style="width: auto; background: var(--primary);" onclick="loadAnalytics()">
+                        <i class="ph-bold ph-funnel"></i> ფილტრი
+                    </button>
+                    <button class="btn-primary" style="width: auto; background: var(--success);" onclick="exportToCSV()">
+                        <i class="ph-bold ph-microsoft-excel-logo"></i> ექსპორტი (CSV)
                     </button>
                 </div>
             </div>
 
-            <div class="kpi-row">
-                <div class="kpi-card"><span>სულ ზარი</span><strong id="kpiTotal">0</strong></div>
-                <div class="kpi-card"><span>დაუხარისხებელი</span><strong id="kpiUnclassified" style="color: var(--warning);">0</strong></div>
-                <div class="kpi-card"><span>ტასკები (Pending)</span><strong id="kpiPending" style="color: var(--primary);">0</strong></div>
-                <div class="kpi-card"><span>მაღალი/კრიტიკული</span><strong id="kpiPriority" style="color: var(--danger);">0</strong></div>
-            </div>
-
-            <div class="charts-row">
-                <div class="chart-box">
-                    <h3>კატეგორიები</h3>
-                    <div class="canvas-container"><canvas id="categoryChart"></canvas></div>
+            <div style="display: flex; gap: 15px; margin-bottom: 25px; flex-wrap: wrap;">
+                <div style="flex: 1; background: var(--input-bg); padding: 15px; border-radius: 12px; border: 1px solid var(--border); text-align: center;">
+                    <div style="font-size: 13px; color: var(--text-muted); font-weight: 600;">სულ ზარები</div>
+                    <div style="font-size: 28px; font-weight: 700; color: var(--text-main);" id="statTotal">0</div>
                 </div>
-                <div class="chart-box">
-                    <h3>თეგების გადანაწილება</h3>
-                    <div class="canvas-container"><canvas id="tagChart"></canvas></div>
+                <div style="flex: 1; background: #dcfce7; padding: 15px; border-radius: 12px; border: 1px solid #bbf7d0; text-align: center;">
+                    <div style="font-size: 13px; color: #166534; font-weight: 600;">დასრულებული</div>
+                    <div style="font-size: 28px; font-weight: 700; color: #15803d;" id="statCompleted">0</div>
                 </div>
-                <div class="chart-box">
-                    <h3>აქტივობის ტრენდი (საათები)</h3>
-                    <div class="canvas-container"><canvas id="trendChart"></canvas></div>
+                <div style="flex: 1; background: #fef08a; padding: 15px; border-radius: 12px; border: 1px solid #fde047; text-align: center;">
+                    <div style="font-size: 13px; color: #854d0e; font-weight: 600;">შესავსები / ღია</div>
+                    <div style="font-size: 28px; font-weight: 700; color: #a16207;" id="statPending">0</div>
                 </div>
             </div>
 
-            <div class="admin-header" style="margin-top: 20px;"><h2 style="margin: 0; font-size: 20px;">პარამეტრების მართვა</h2></div>
-            <div class="settings-row">
-                <div class="settings-box">
-                    <h3>კატეგორიები</h3>
-                    <div class="input-group">
-                        <input type="text" id="newCatInput" class="form-control" placeholder="სახელი...">
-                        <input type="text" id="newCatExts" class="form-control" placeholder="ვის? (მაგ: 101,102)">
-                        <button class="btn-primary" onclick="addSetting('categories', 'newCatInput', 'newCatExts')">დამატება</button>
-                    </div>
-                    <ul id="adminCatList" class="ops-list settings-list"></ul>
+            <div style="height: 300px; width: 100%; margin-bottom: 30px;"><canvas id="callsChart"></canvas></div>
+
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                <div style="flex: 1; height: 250px; background: var(--input-bg); padding: 15px; border-radius: 12px; border: 1px solid var(--border);">
+                    <canvas id="categoryPieChart"></canvas>
                 </div>
-                <div class="settings-box">
-                    <h3>თეგები</h3>
-                    <div class="input-group">
-                        <input type="text" id="newTagInput" class="form-control" placeholder="თეგის სახელი...">
-                        <button class="btn-primary" onclick="addSetting('tags', 'newTagInput')">დამატება</button>
-                    </div>
-                    <ul id="adminTagList" class="ops-list settings-list"></ul>
+                <div style="flex: 1; height: 250px; background: var(--input-bg); padding: 15px; border-radius: 12px; border: 1px solid var(--border);">
+                    <canvas id="statusPieChart"></canvas>
                 </div>
-                <div class="settings-box">
-                    <h3>სტატუსები</h3>
-                    <div class="input-group">
-                        <input type="text" id="newStatusInput" class="form-control" placeholder="სტატუსის სახელი...">
-                        <button class="btn-primary" onclick="addSetting('statuses', 'newStatusInput')">დამატება</button>
-                    </div>
-                    <ul id="adminStatusList" class="ops-list settings-list"></ul>
-                </div>
-                <div class="admin-card">
-    <h3><i class="ph-bold ph-phone"></i> დაშვებული SIP ნომრები (Whitelist)</h3>
-    
-    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-        <input type="text" id="newSipInput" class="form-control" placeholder="ახალი SIP ნომერი (მაგ: 9307)">
-        <button class="btn-primary" onclick="addSipExtension()">
-            <i class="ph-bold ph-plus"></i> დამატება
-        </button>
+            </div>
+        </div>
+<div class="admin-card" style="margin-bottom: 20px;">
+    <h3 style="margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+        <i class="ph-bold ph-headset"></i> ოპერატორების სტატისტიკა (გაფილტრული პერიოდით)
+    </h3>
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 14px;">
+            <thead>
+                <tr style="background: var(--input-bg); border-bottom: 2px solid var(--border);">
+                    <th style="padding: 12px; color: var(--text-muted);">ოპერატორი (SIP)</th>
+                    <th style="padding: 12px; color: var(--text-muted);">სულ ზარი</th>
+                    <th style="padding: 12px; color: var(--success);">დასრულებული</th>
+                    <th style="padding: 12px; color: var(--warning);">მიმდინარე / ღია</th>
+                    <th style="padding: 12px; color: var(--primary);">ეფექტურობა</th>
+                </tr>
+            </thead>
+            <tbody id="operatorStatsTable">
+                </tbody>
+        </table>
     </div>
-
-    <ul id="sipExtensionsList" class="admin-list" style="list-style: none; padding: 0;">
-        </ul>
 </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; padding-bottom: 40px;">
+
+            <div class="admin-card">
+                <h3 style="margin-bottom: 15px; display: flex; align-items: center; gap: 8px; color: var(--warning);">
+                    <i class="ph-bold ph-megaphone"></i> საინფორმაციო ბანერი
+                </h3>
+                <div class="form-group"><input type="text" id="announcementInput" class="form-control" placeholder="მაგ: სისტემაში მიმდინარეობს განახლება..."></div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn-primary" style="background: var(--warning); color: black;" onclick="setAnnouncement()"><i class="ph-bold ph-broadcast"></i> ჩართვა</button>
+                    <button class="btn-primary" style="background: var(--danger);" onclick="clearAnnouncement()"><i class="ph-bold ph-x-circle"></i> გათიშვა</button>
+                </div>
             </div>
-        </main>
+
+            <div class="admin-card">
+                <h3 style="margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+                    <i class="ph-bold ph-users-three"></i> გუნდები (Teams)
+                </h3>
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <input type="text" id="newTeamInput" class="form-control" placeholder="ახალი გუნდი (მაგ: Support)">
+                    <button class="btn-primary" style="width: auto;" onclick="addTeam()"><i class="ph-bold ph-plus"></i></button>
+                </div>
+                <ul id="teamsList" class="history-list" style="max-height: 200px; overflow-y: auto; padding-right: 5px;"></ul>
+            </div>
+
+            <div class="admin-card">
+                <h3 style="margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+                    <i class="ph-bold ph-phone"></i> SIP ნომრები
+                </h3>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <input type="hidden" id="editSipId">
+                    <input type="text" id="newSipInput" class="form-control" placeholder="ნომერი (მაგ: 1001)" style="width: 100px;">
+                    <select id="newSipTeam" class="form-control" style="flex: 1;"><option value="">გუნდის გარეშე</option></select>
+                    
+                    <button class="btn-primary" id="saveSipBtn" style="width: auto;" onclick="saveSipExtension()"><i class="ph-bold ph-plus"></i></button>
+                    <button class="btn-primary" id="cancelSipBtn" style="width: auto; background: var(--border); color: var(--text-main); display: none;" onclick="cancelSipEdit()"><i class="ph-bold ph-x"></i></button>
+                </div>
+                <ul id="sipExtensionsList" class="history-list" style="max-height: 200px; overflow-y: auto; padding-right: 5px;"></ul>
+            </div>
+<div class="admin-card">
+                <h3 style="margin-bottom: 15px; display: flex; align-items: center; gap: 8px;"><i class="ph-bold ph-list-checks"></i> სტატუსები</h3>
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <input type="text" id="newStatusInput" class="form-control" placeholder="ახალი სტატუსი">
+                    <button class="btn-primary" style="width: auto;" onclick="addStatus()"><i class="ph-bold ph-plus"></i></button>
+                </div>
+                <ul id="statusesList" class="history-list" style="max-height: 200px; overflow-y: auto; padding-right: 5px;"></ul>
+            </div>
+
+
+
+
+            <div class="admin-card" style="grid-column: 1 / -1;">
+                <h3 style="margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+                    <i class="ph-bold ph-folder"></i> კატეგორიები (ნომრებზე მიბმა)
+                </h3>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: flex-start;">
+                    <input type="hidden" id="editCategoryId">
+                    <input type="text" id="newCategoryInput" class="form-control" placeholder="კატეგორიის სახელი" style="flex: 1; max-width: 300px;">
+                    <button class="btn-primary" id="saveCatBtn" style="width: auto; background: var(--success);" onclick="saveCategory()"><i class="ph-bold ph-check"></i> შენახვა</button>
+                    <button class="btn-primary" id="cancelCatBtn" style="width: auto; background: var(--border); color: var(--text-main); display: none;" onclick="cancelCategoryEdit()"><i class="ph-bold ph-x"></i></button>
+                </div>
+                <div id="categorySipCheckboxes" style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; padding: 15px; background: var(--input-bg); border-radius: 8px; border: 1px solid var(--border);">
+                    <span style="font-size: 11px; color: var(--text-muted); width: 100%; text-transform: uppercase;">მონიშნეთ რომელ ნომრებს გამოუჩნდეს (თუ ცარიელია, გამოუჩნდება ყველას)</span>
+                    </div>
+                <ul id="categoriesList" class="history-list" style="max-height: 250px; overflow-y: auto; padding-right: 5px;"></ul>
+            </div>
+
+            
+
+            <div class="admin-card">
+                <h3 style="margin-bottom: 15px; display: flex; align-items: center; gap: 8px;"><i class="ph-bold ph-hash"></i> თეგები</h3>
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <input type="text" id="newTagInput" class="form-control" placeholder="ახალი თეგი">
+                    <button class="btn-primary" style="width: auto;" onclick="addTag()"><i class="ph-bold ph-plus"></i></button>
+                </div>
+                <ul id="tagsList" class="history-list" style="max-height: 200px; overflow-y: auto; padding-right: 5px;"></ul>
+            </div>
+
+        </div>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="admin.js"></script>
+    <script>
+        let allSipNumbers = [];
+        let allTeams = [];
+        let currentCallData = [];
+        let callsChartInstance = null;
+        let categoryPieInstance = null;
+        let statusPieInstance = null;
+
+        // --- 0. ანალიტიკა და ჩარტები ---
+        async function loadAnalytics() {
+            try {
+                const res = await fetch('/api/admin/calls');
+                let data = await res.json();
+                const startDate = document.getElementById('filterStartDate').value;
+                const endDate = document.getElementById('filterEndDate').value;
+
+                if (startDate) data = data.filter(c => c.date >= startDate);
+                if (endDate) data = data.filter(c => c.date <= endDate);
+
+                currentCallData = data;
+                updateDashboardUI(data);
+            } catch (e) { console.error(e); }
+        }
+
+        function updateDashboardUI(data) {
+            document.getElementById('statTotal').innerText = data.length;
+            document.getElementById('statCompleted').innerText = data.filter(c => c.task_status === 'დასრულებული').length;
+            document.getElementById('statPending').innerText = data.filter(c => c.task_status !== 'დასრულებული').length;
+
+            const countsByDate = {};
+            const catCounts = {};
+            const statusCounts = {};
+
+            [...data].sort((a,b) => a.date.localeCompare(b.date)).forEach(c => { 
+                countsByDate[c.date] = (countsByDate[c.date] || 0) + 1; 
+                
+                const cat = c.category || 'დაუხარისხებელი';
+                catCounts[cat] = (catCounts[cat] || 0) + 1;
+                
+                statusCounts[c.task_status] = (statusCounts[c.task_status] || 0) + 1;
+            });
+
+            // 1. მთავარი ხაზოვანი ჩარტი
+            const ctxLine = document.getElementById('callsChart').getContext('2d');
+            if (callsChartInstance) callsChartInstance.destroy();
+            callsChartInstance = new Chart(ctxLine, {
+                type: 'line',
+                data: { labels: Object.keys(countsByDate), datasets: [{ label: 'შემოსული ზარები', data: Object.values(countsByDate), borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.1)', borderWidth: 2, fill: true, tension: 0.3 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
+
+            // 2. კატეგორიების Pie ჩარტი
+            const ctxCat = document.getElementById('categoryPieChart').getContext('2d');
+            if (categoryPieInstance) categoryPieInstance.destroy();
+            categoryPieInstance = new Chart(ctxCat, {
+                type: 'doughnut',
+                data: { labels: Object.keys(catCounts), datasets: [{ data: Object.values(catCounts), backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b'] }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'ზარები კატეგორიების მიხედვით' }, legend: { position: 'right' } } }
+            });
+
+            // 3. სტატუსების Pie ჩარტი
+            const ctxStat = document.getElementById('statusPieChart').getContext('2d');
+            if (statusPieInstance) statusPieInstance.destroy();
+            statusPieInstance = new Chart(ctxStat, {
+                type: 'pie',
+                data: { labels: Object.keys(statusCounts), datasets: [{ data: Object.values(statusCounts), backgroundColor: ['#10b981', '#f59e0b', '#ef4444'] }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'დავალებების სტატუსები' }, legend: { position: 'right' } } }
+            });
+            // --- 4. ოპერატორების ცხრილის გენერაცია ---
+    const opStats = {};
+    data.forEach(c => {
+        const ext = c.operator_ext || 'უცნობი';
+        if (!opStats[ext]) opStats[ext] = { total: 0, completed: 0, pending: 0 };
+        
+        opStats[ext].total++;
+        if (c.task_status === 'დასრულებული') opStats[ext].completed++;
+        else opStats[ext].pending++;
+    });
+
+    const tbody = document.getElementById('operatorStatsTable');
+    tbody.innerHTML = Object.keys(opStats).sort((a,b) => opStats[b].total - opStats[a].total).map(ext => {
+        const stats = opStats[ext];
+        const eff = stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
+        return `
+            <tr style="border-bottom: 1px solid var(--border); transition: 0.2s;" onmouseover="this.style.background='var(--input-bg)'" onmouseout="this.style.background='transparent'">
+                <td style="padding: 12px; font-weight: 600;"><i class="ph-bold ph-user" style="color:var(--text-muted); margin-right:5px;"></i> ${ext}</td>
+                <td style="padding: 12px; font-weight: 700;">${stats.total}</td>
+                <td style="padding: 12px; color: var(--success); font-weight: 600;">${stats.completed}</td>
+                <td style="padding: 12px; color: var(--warning); font-weight: 600;">${stats.pending}</td>
+                <td style="padding: 12px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <div style="width: 100px; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;">
+                            <div style="width: ${eff}%; height: 100%; background: ${eff > 70 ? 'var(--success)' : 'var(--warning)'};"></div>
+                        </div>
+                        <span style="font-size: 12px; font-weight: 600;">${eff}%</span>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+        }
+
+        function exportToCSV() {
+            if (currentCallData.length === 0) return alert("მონაცემები არ არის!");
+            const headers = ["ID", "ნომერი", "ოპერატორი", "თარიღი", "დრო", "კატეგორია", "თეგი", "პრიორიტეტი", "სტატუსი", "კომენტარი"];
+            const csvRows = [headers.join(',')];
+            currentCallData.forEach(c => {
+                const comment = `"${(c.comment || '').replace(/"/g, '""')}"`;
+                csvRows.push([c.id, c.caller_number, c.operator_ext, c.date, c.time, c.category || "დაუხარისხებელი", c.tag || "", c.priority || "", c.task_status, comment].join(','));
+            });
+            const blob = new Blob(["\uFEFF" + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = `stats_${new Date().toISOString().split('T')[0]}.csv`; a.click();
+        }
+
+        // --- 1. ბანერი ---
+        async function setAnnouncement() { const t = document.getElementById('announcementInput').value.trim(); if(t) { await fetch('/api/announcement', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text: t}) }); alert("ბანერი ჩაირთო!"); } }
+        async function clearAnnouncement() { await fetch('/api/announcement', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text: ""}) }); document.getElementById('announcementInput').value = ""; alert("გაითიშა!"); }
+
+        // --- 2. გუნდები ---
+        async function loadTeams() { 
+            allTeams = await (await fetch('/api/teams')).json(); 
+            const list = document.getElementById('teamsList');
+            list.innerHTML = allTeams.map(t => `<li class="history-item" style="display:flex; justify-content:space-between;"><strong>${t.name}</strong> <button style="background:var(--danger); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer;" onclick="deleteTeam(${t.id})"><i class="ph-bold ph-trash"></i></button></li>`).join('');
+            
+            // ვაახლებთ სელექტს SIP-ებისთვის
+            document.getElementById('newSipTeam').innerHTML = '<option value="">გუნდის გარეშე</option>' + allTeams.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+        }
+        async function addTeam() { const val = document.getElementById('newTeamInput').value.trim(); if(val) { await fetch('/api/teams', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name: val}) }); document.getElementById('newTeamInput').value = ''; loadTeams(); } }
+        async function deleteTeam(id) { if(confirm("წავშალოთ გუნდი?")) { await fetch(`/api/teams/${id}`, { method:'DELETE' }); loadTeams(); loadSips(); } }
+
+        // --- 3. SIP ნომრები ---
+        async function loadSips() { 
+            allSipNumbers = await (await fetch('/api/extensions')).json();
+            const list = document.getElementById('sipExtensionsList');
+            list.innerHTML = allSipNumbers.map(s => `
+                <li class="history-item" style="display:flex; justify-content:space-between; align-items:center;">
+                    <div><strong>${s.sip_number}</strong> <span style="font-size:11px; color:var(--text-muted); margin-left:10px;"><i class="ph-bold ph-users-three"></i> ${s.team_name || 'გუნდის გარეშე'}</span></div>
+                    <div style="display:flex; gap:5px;">
+                        <button style="background:var(--warning); color:black; border:none; padding:4px 8px; border-radius:6px; cursor:pointer;" onclick="editSip(${s.id}, '${s.sip_number}', ${s.team_id || "''"})"><i class="ph-bold ph-pencil-simple"></i></button>
+                        <button style="background:var(--danger); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer;" onclick="deleteSip(${s.id})"><i class="ph-bold ph-trash"></i></button>
+                    </div>
+                </li>
+            `).join('');
+            renderCategoryCheckboxes();
+        }
+        function editSip(id, sip, teamId) {
+            document.getElementById('editSipId').value = id;
+            document.getElementById('newSipInput').value = sip;
+            document.getElementById('newSipTeam').value = teamId || "";
+            document.getElementById('saveSipBtn').innerHTML = '<i class="ph-bold ph-check"></i>';
+            document.getElementById('saveSipBtn').style.background = 'var(--warning)';
+            document.getElementById('cancelSipBtn').style.display = 'block';
+        }
+        function cancelSipEdit() {
+            document.getElementById('editSipId').value = '';
+            document.getElementById('newSipInput').value = '';
+            document.getElementById('newSipTeam').value = '';
+            document.getElementById('saveSipBtn').innerHTML = '<i class="ph-bold ph-plus"></i>';
+            document.getElementById('saveSipBtn').style.background = 'var(--primary)';
+            document.getElementById('cancelSipBtn').style.display = 'none';
+        }
+        async function saveSipExtension() {
+            const id = document.getElementById('editSipId').value;
+            const sip = document.getElementById('newSipInput').value.trim();
+            const team = document.getElementById('newSipTeam').value;
+            if (!sip) return;
+
+            const payload = { sip_number: sip, team_id: team || null };
+            if (id) {
+                await fetch(`/api/extensions/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+            } else {
+                await fetch('/api/extensions', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+            }
+            cancelSipEdit(); loadSips();
+        }
+        async function deleteSip(id) { if(confirm("წავშალოთ ნომერი?")) { await fetch(`/api/extensions/${id}`, { method:'DELETE' }); loadSips(); } }
+
+        // --- 4. კატეგორიები ---
+        function renderCategoryCheckboxes() {
+            const container = document.getElementById('categorySipCheckboxes');
+            let html = '<span style="font-size: 11px; color: var(--text-muted); width: 100%; text-transform: uppercase;">მონიშნეთ რომელ ნომრებს გამოუჩნდეს (თუ ცარიელია, გამოუჩნდება ყველას)</span>';
+            allSipNumbers.forEach(sip => { html += `<label style="display:flex; align-items:center; gap:6px; font-size:13px; font-weight:600; cursor:pointer;"><input type="checkbox" value="${sip.sip_number}" class="cat-sip-cb" style="width:16px; height:16px; cursor:pointer;">${sip.sip_number}</label>`; });
+            container.innerHTML = html;
+        }
+
+        async function loadCategories() {
+            const categories = await (await fetch('/api/categories')).json();
+            const list = document.getElementById('categoriesList');
+            list.innerHTML = categories.map(c => `
+                <li class="history-item" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                    <div style="display:flex; flex-direction:column; flex:1;">
+                        <strong style="font-size:14px;">${c.name}</strong>
+                        <span style="font-size:11px; color:var(--text-muted);"><i class="ph-bold ph-users"></i> ${c.allowed_exts ? c.allowed_exts : 'ყველა ოპერატორი'}</span>
+                    </div>
+                    <div style="display:flex; gap:5px;">
+                        <button style="background:var(--warning); color:black; border:none; padding:6px 10px; border-radius:6px; cursor:pointer;" onclick="editCategory(${c.id}, '${c.name}', '${c.allowed_exts || ''}')"><i class="ph-bold ph-pencil-simple"></i></button>
+                        <button style="background:var(--danger); color:white; border:none; padding:6px 10px; border-radius:6px; cursor:pointer;" onclick="deleteCategory(${c.id})"><i class="ph-bold ph-trash"></i></button>
+                    </div>
+                </li>
+            `).join('');
+        }
+
+        function editCategory(id, name, exts) {
+            document.getElementById('editCategoryId').value = id;
+            document.getElementById('newCategoryInput').value = name;
+            
+            const allowedArray = exts ? exts.split(',').map(s => s.trim()) : [];
+            document.querySelectorAll('.cat-sip-cb').forEach(cb => { cb.checked = allowedArray.includes(cb.value); });
+
+            document.getElementById('cancelCatBtn').style.display = 'block';
+            document.getElementById('saveCatBtn').style.background = 'var(--warning)';
+            document.getElementById('saveCatBtn').style.color = 'black';
+        }
+
+        function cancelCategoryEdit() {
+            document.getElementById('editCategoryId').value = '';
+            document.getElementById('newCategoryInput').value = '';
+            document.querySelectorAll('.cat-sip-cb').forEach(cb => cb.checked = false);
+            document.getElementById('cancelCatBtn').style.display = 'none';
+            document.getElementById('saveCatBtn').style.background = 'var(--success)';
+            document.getElementById('saveCatBtn').style.color = 'white';
+        }
+
+        async function saveCategory() {
+            const id = document.getElementById('editCategoryId').value;
+            const name = document.getElementById('newCategoryInput').value.trim();
+            if (!name) return;
+            const exts = Array.from(document.querySelectorAll('.cat-sip-cb:checked')).map(cb => cb.value).join(','); 
+
+            const payload = { name: name, allowed_exts: exts };
+            if (id) await fetch(`/api/categories/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+            else await fetch('/api/categories', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+
+            cancelCategoryEdit(); loadCategories();
+        }
+        async function deleteCategory(id) { if(confirm("წავშალოთ?")) { await fetch(`/api/categories/${id}`, { method:'DELETE' }); loadCategories(); } }
+
+        // --- 5 & 6. სტატუსები და თეგები ---
+        function renderSimpleList(id, items, key, delFn) { document.getElementById(id).innerHTML = items.map(i => `<li class="history-item" style="display:flex; justify-content:space-between;"><strong>${i[key]}</strong><button style="background:var(--danger); color:white; border:none; padding:4px 8px; border-radius:6px; cursor:pointer;" onclick="${delFn}(${i.id})"><i class="ph-bold ph-trash"></i></button></li>`).join(''); }
+        
+        async function loadStatuses() { renderSimpleList('statusesList', await (await fetch('/api/statuses')).json(), 'name', 'deleteStatus'); }
+        async function addStatus() { const val = document.getElementById('newStatusInput').value.trim(); if(val) { await fetch('/api/statuses', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:val}) }); document.getElementById('newStatusInput').value=''; loadStatuses(); } }
+        async function deleteStatus(id) { if(confirm("წავშალოთ?")) { await fetch(`/api/statuses/${id}`, { method:'DELETE' }); loadStatuses(); } }
+
+        async function loadTags() { renderSimpleList('tagsList', await (await fetch('/api/tags')).json(), 'name', 'deleteTag'); }
+        async function addTag() { const val = document.getElementById('newTagInput').value.trim(); if(val) { await fetch('/api/tags', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:val}) }); document.getElementById('newTagInput').value=''; loadTags(); } }
+        async function deleteTag(id) { if(confirm("წავშალოთ?")) { await fetch(`/api/tags/${id}`, { method:'DELETE' }); loadTags(); } }
+
+        // ჩატვირთვა
+        document.addEventListener('DOMContentLoaded', () => {
+            const today = new Date(); const lastWeek = new Date(); lastWeek.setDate(today.getDate() - 7);
+            document.getElementById('filterEndDate').value = today.toISOString().split('T')[0];
+            document.getElementById('filterStartDate').value = lastWeek.toISOString().split('T')[0];
+            
+            loadAnalytics(); loadTeams().then(loadSips); loadCategories(); loadStatuses(); loadTags();
+        });
+    </script>
+    <script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').then(reg => {
+                console.log('Service Worker დარეგისტრირდა!', reg);
+            }).catch(err => {
+                console.log('Service Worker შეცდომა:', err);
+            });
+        });
+    }
+</script>
 </body>
 </html>

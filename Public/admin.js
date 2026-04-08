@@ -208,3 +208,15 @@ async function deleteSipExtension(id) {
 document.addEventListener('DOMContentLoaded', () => {
     loadSipExtensions();
 });
+async function setAnnouncement() {
+    const text = document.getElementById('announcementInput').value.trim();
+    if(!text) return;
+    await fetch('/api/announcement', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({text}) });
+    alert("ბანერი წარმატებით ჩაირთო ყველა ოპერატორთან!");
+}
+
+async function clearAnnouncement() {
+    await fetch('/api/announcement', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({text: ""}) });
+    document.getElementById('announcementInput').value = "";
+    alert("ბანერი გაითიშა!");
+}
