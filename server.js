@@ -80,10 +80,17 @@ io.on('connection', (socket) => {
 // --- API: WEBHOOK (Asterisk) ---
 app.get('/api/webhook/call', (req, res) => {
     const { ext, caller } = req.query;
-    if (!ext || !caller) return res.status(400).json({ error: "Missing parameters" });
+    
+    if (!ext || !caller) {
+        return res.status(400).json({ error: "Missing parameters" });
+    }
 
+    // 1. მყისიერად ვუბრუნებთ პასუხს ასტერისკს, რომ აუდიო არ გაჭედოს!
+    res.status(200).send('OK');
+
+    // 2. დანარჩენ საქმეს (ბაზაში ძებნა, ჩაწერა, სოკეტები) ვაგრძელებთ ფონურად
     db.get("SELECT * FROM extensions WHERE sip_number = ?", [ext], (err, row) => {
-        if (!row) return res.status(200).send('Ignored');
+        if (!row) return; // თუ ნომერი არ გვაქვს ბაზაში, ვაიგნორებთ
 
         const tzOffset = new Date().getTimezoneOffset() * 60000;
         const localDate = (new Date(new Date() - tzOffset)).toISOString().split('T')[0];
@@ -92,11 +99,14 @@ app.get('/api/webhook/call', (req, res) => {
         const sql = `INSERT INTO call_details (caller_number, operator_ext, date, time, category, tag, priority, comment, task_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
         db.run(sql, [caller, ext, localDate, localTime, 'დაუხარისხებელი', '', 'ნორმალური', '', 'შესავსებია'], function(err) {
-            if (err) return res.status(500).send('Database Error');
+            if (err) {
+                console.error("Webhook DB Error:", err);
+                return;
+            }
             const newCallId = this.lastID;
+            // ვუგზავნით ოპერატორს ეკრანზე ამოგდებას
             io.to(`ext_${ext}`).emit('incoming_call', { call_id: newCallId, caller_number: caller, operator_ext: ext, timestamp: localTime });
             io.emit('admin_data_updated'); 
-            res.status(200).send('Saved and Emitted'); 
         });
     });
 });
