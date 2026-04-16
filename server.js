@@ -1,5 +1,6 @@
+require('dotenv').config();
 const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
+const { Pool } = require('pg');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const http = require('http');
@@ -16,49 +17,61 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 📌 ბაზის ინიციალიზაცია
-const db = new sqlite3.Database('./callcenter_v2.db');
+// 📌 PostgreSQL ბაზასთან კავშირი .env ფაილიდან
+const pool = new Pool({
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
+    database: process.env.DB_NAME,
+});
 
-db.serialize(() => {
-    db.run(`CREATE TABLE IF NOT EXISTS call_details (id INTEGER PRIMARY KEY AUTOINCREMENT, caller_number TEXT, operator_ext TEXT, date TEXT, time TEXT, category TEXT, tag TEXT, priority TEXT, comment TEXT, task_status TEXT)`);
-    db.run(`CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, allowed_exts TEXT)`);
-    db.run(`ALTER TABLE categories ADD COLUMN allowed_exts TEXT`, () => {}); 
-    db.run(`CREATE TABLE IF NOT EXISTS tags (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)`);
-    db.run(`CREATE TABLE IF NOT EXISTS clients (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, number TEXT UNIQUE)`);
-    db.run(`CREATE TABLE IF NOT EXISTS statuses (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)`);
-    
-    db.get("SELECT count(*) as count FROM statuses", (err, row) => {
-        if (row && row.count === 0) {
-            db.run("INSERT INTO statuses (name) VALUES ('დასრულებული'), ('შესავსებია'), ('გადასარეკი')");
+pool.on('error', (err, client) => {
+    console.error('Unexpected error on idle client', err);
+});
+
+// 📌 ბაზის ინიციალიზაცია (Postgres სინტაქსით)
+const initDB = async () => {
+    try {
+        await pool.query(`CREATE TABLE IF NOT EXISTS call_details (id SERIAL PRIMARY KEY, caller_number VARCHAR, operator_ext VARCHAR, date VARCHAR, time VARCHAR, category VARCHAR, tag VARCHAR, priority VARCHAR, comment TEXT, task_status VARCHAR)`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS categories (id SERIAL PRIMARY KEY, name VARCHAR, allowed_exts VARCHAR)`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS tags (id SERIAL PRIMARY KEY, name VARCHAR)`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS clients (id SERIAL PRIMARY KEY, name VARCHAR, number VARCHAR UNIQUE)`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS statuses (id SERIAL PRIMARY KEY, name VARCHAR)`);
+        
+        await pool.query(`CREATE TABLE IF NOT EXISTS teams (id SERIAL PRIMARY KEY, name VARCHAR NOT NULL)`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, full_name VARCHAR NOT NULL, team_id INTEGER REFERENCES teams(id), is_active INTEGER DEFAULT 1)`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS extensions (id SERIAL PRIMARY KEY, sip_number VARCHAR UNIQUE NOT NULL, user_id INTEGER REFERENCES users(id), team_id INTEGER REFERENCES teams(id))`);
+
+        // საწყისი სტატუსების დამატება
+        const statCheck = await pool.query("SELECT count(*) FROM statuses");
+        if (parseInt(statCheck.rows[0].count) === 0) {
+            await pool.query("INSERT INTO statuses (name) VALUES ('დასრულებული'), ('შესავსებია'), ('გადასარეკი')");
         }
-    });
 
-    // 📌 ადმინ პანელის ცხრილები
-    db.run(`CREATE TABLE IF NOT EXISTS teams (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`);
-    db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, full_name TEXT NOT NULL, team_id INTEGER, is_active INTEGER DEFAULT 1, FOREIGN KEY(team_id) REFERENCES teams(id))`);
-    db.run(`CREATE TABLE IF NOT EXISTS extensions (id INTEGER PRIMARY KEY AUTOINCREMENT, sip_number TEXT UNIQUE NOT NULL, user_id INTEGER, team_id INTEGER, FOREIGN KEY(user_id) REFERENCES users(id), FOREIGN KEY(team_id) REFERENCES teams(id))`);
-    
-    // ვამატებთ team_id სვეტს თუ აქამდე არ იყო შექმნილი (ძველი ბაზის განახლება)
-    db.run(`ALTER TABLE extensions ADD COLUMN team_id INTEGER`, () => {});
-
-    db.get("SELECT COUNT(*) AS count FROM extensions", (err, row) => {
-        if (row && row.count === 0) {
-            const initialSips = ['1001', '1002', '1003', '1004', '2001'];
-            const stmt = db.prepare("INSERT INTO extensions (sip_number) VALUES (?)");
-            initialSips.forEach(sip => stmt.run(sip));
-            stmt.finalize();
+        // სატესტო SIP ნომრების დამატება
+        const sipCheck = await pool.query("SELECT count(*) FROM extensions");
+        if (parseInt(sipCheck.rows[0].count) === 0) {
+            const initialSips = ['1001', '1002', '1003', '1004', '2001', '9307'];
+            for (let sip of initialSips) {
+                await pool.query("INSERT INTO extensions (sip_number) VALUES ($1)", [sip]);
+            }
             console.log("✅ სატესტო SIP ნომრები დაემატა ბაზაში.");
         }
-    });
-});
+        console.log("✅ PostgreSQL ბაზა ინიციალიზებულია წარმატებით!");
+    } catch (err) {
+        console.error("❌ ბაზის ინიციალიზაციის შეცდომა:", err);
+    }
+};
+initDB();
 
 const connectedOperators = new Map();
 
 io.on('connection', (socket) => {
-    socket.on('request_login', (ext) => {
-        db.get("SELECT * FROM extensions WHERE sip_number = ?", [ext], (err, row) => {
-            if (err) return socket.emit('login_error', 'სერვერის შეცდომა მონაცემთა ბაზასთან.');
-            if (row) {
+    socket.on('request_login', async (ext) => {
+        try {
+            const result = await pool.query("SELECT * FROM extensions WHERE sip_number = $1", [ext]);
+            if (result.rows.length > 0) {
                 socket.join(`ext_${ext}`);
                 connectedOperators.set(socket.id, ext);
                 io.emit('active_operators', Array.from(new Set(connectedOperators.values())));
@@ -66,7 +79,9 @@ io.on('connection', (socket) => {
             } else {
                 socket.emit('login_error', 'SIP ნომერი არ არის დაშვებული!');
             }
-        });
+        } catch (err) {
+            socket.emit('login_error', 'სერვერის შეცდომა მონაცემთა ბაზასთან.');
+        }
     });
 
     socket.on('disconnect', () => {
@@ -78,41 +93,36 @@ io.on('connection', (socket) => {
 });
 
 // --- API: WEBHOOK (Asterisk) ---
-app.get('/api/webhook/call', (req, res) => {
+app.get('/api/webhook/call', async (req, res) => {
     const { ext, caller } = req.query;
-    
-    if (!ext || !caller) {
-        return res.status(400).json({ error: "Missing parameters" });
-    }
+    if (!ext || !caller) return res.status(400).json({ error: "Missing parameters" });
 
-    // 1. მყისიერად ვუბრუნებთ პასუხს ასტერისკს, რომ აუდიო არ გაჭედოს!
+    // 1. მყისიერი პასუხი ასტერისკს
     res.status(200).send('OK');
 
-    // 2. დანარჩენ საქმეს (ბაზაში ძებნა, ჩაწერა, სოკეტები) ვაგრძელებთ ფონურად
-    db.get("SELECT * FROM extensions WHERE sip_number = ?", [ext], (err, row) => {
-        if (!row) return; // თუ ნომერი არ გვაქვს ბაზაში, ვაიგნორებთ
+    // 2. ფონური დამუშავება
+    try {
+        const extCheck = await pool.query("SELECT * FROM extensions WHERE sip_number = $1", [ext]);
+        if (extCheck.rows.length === 0) return;
 
         const tzOffset = new Date().getTimezoneOffset() * 60000;
         const localDate = (new Date(new Date() - tzOffset)).toISOString().split('T')[0];
         const localTime = new Date().toLocaleTimeString('ka-GE', {hour: '2-digit', minute:'2-digit'});
 
-        const sql = `INSERT INTO call_details (caller_number, operator_ext, date, time, category, tag, priority, comment, task_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        const sql = `INSERT INTO call_details (caller_number, operator_ext, date, time, category, tag, priority, comment, task_status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`;
+        
+        const result = await pool.query(sql, [caller, ext, localDate, localTime, 'დაუხარისხებელი', '', 'ნორმალური', '', 'შესავსებია']);
+        const newCallId = result.rows[0].id;
 
-        db.run(sql, [caller, ext, localDate, localTime, 'დაუხარისხებელი', '', 'ნორმალური', '', 'შესავსებია'], function(err) {
-            if (err) {
-                console.error("Webhook DB Error:", err);
-                return;
-            }
-            const newCallId = this.lastID;
-            // ვუგზავნით ოპერატორს ეკრანზე ამოგდებას
-            io.to(`ext_${ext}`).emit('incoming_call', { call_id: newCallId, caller_number: caller, operator_ext: ext, timestamp: localTime });
-            io.emit('admin_data_updated'); 
-        });
-    });
+        io.to(`ext_${ext}`).emit('incoming_call', { call_id: newCallId, caller_number: caller, operator_ext: ext, timestamp: localTime });
+        io.emit('admin_data_updated'); 
+    } catch (err) {
+        console.error("Webhook DB Error:", err);
+    }
 });
 
 // --- API: ზარის შენახვა / განახლება ---
-app.post('/api/save-call', (req, res) => {
+app.post('/api/save-call', async (req, res) => {
     const { id, caller_number, client_name, operator_ext, category, tags, priority, comment, task_status } = req.body;
     const tzOffset = new Date().getTimezoneOffset() * 60000;
     const localDate = (new Date(new Date() - tzOffset)).toISOString().split('T')[0];
@@ -121,22 +131,25 @@ app.post('/api/save-call', (req, res) => {
     const finalCategory = category || 'დაუხარისხებელი';
     const finalStatus = task_status || 'შესავსებია';
 
-    if (id) {
-        db.run(`UPDATE call_details SET category=?, tag=?, priority=?, comment=?, task_status=? WHERE id=?`, 
-        [finalCategory, tags, priority, comment, finalStatus, id], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            if (client_name) db.run(`INSERT INTO clients (name, number) VALUES (?, ?) ON CONFLICT(number) DO UPDATE SET name=excluded.name`, [client_name, caller_number]);
-            io.emit('admin_data_updated'); 
-            res.json({ success: true, id: id });
-        });
-    } else {
-        db.run(`INSERT INTO call_details (caller_number, operator_ext, date, time, category, tag, priority, comment, task_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
-        [caller_number, operator_ext, localDate, localTime, finalCategory, tags, priority, comment, finalStatus], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            if (client_name) db.run(`INSERT INTO clients (name, number) VALUES (?, ?) ON CONFLICT(number) DO UPDATE SET name=excluded.name`, [client_name, caller_number]);
-            io.emit('admin_data_updated'); 
-            res.json({ success: true, id: this.lastID });
-        });
+    try {
+        let returnId = id;
+        if (id) {
+            await pool.query(`UPDATE call_details SET category=$1, tag=$2, priority=$3, comment=$4, task_status=$5 WHERE id=$6`, 
+            [finalCategory, tags, priority, comment, finalStatus, id]);
+        } else {
+            const result = await pool.query(`INSERT INTO call_details (caller_number, operator_ext, date, time, category, tag, priority, comment, task_status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`, 
+            [caller_number, operator_ext, localDate, localTime, finalCategory, tags, priority, comment, finalStatus]);
+            returnId = result.rows[0].id;
+        }
+
+        if (client_name) {
+            await pool.query(`INSERT INTO clients (name, number) VALUES ($1, $2) ON CONFLICT(number) DO UPDATE SET name=excluded.name`, [client_name, caller_number]);
+        }
+
+        io.emit('admin_data_updated'); 
+        res.json({ success: true, id: returnId });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
@@ -156,24 +169,43 @@ app.post('/api/jira/create', async (req, res) => {
         else res.status(500).json({ success: false });
     } catch (e) { res.status(500).json({ success: false }); }
 });
-// --- API: კლიენტის სახელის ძებნა ---
-app.get('/api/client/:number', (req, res) => {
-    db.get('SELECT * FROM clients WHERE number = ?', [req.params.number], (err, row) => res.json(row || {}));
+
+// --- API: კლიენტის და წინა ზარის მოძიება ---
+app.get('/api/client/:number', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM clients WHERE number = $1 LIMIT 1', [req.params.number]);
+        res.json(result.rows[0] || {});
+    } catch (err) { res.status(500).json({error: err.message}); }
 });
-// --- API: წინა ზარის ისტორია ---
-app.get('/api/last-call/:number', (req, res) => {
-    const excludeId = req.query.excludeId;
-    if (excludeId) {
-        // თუ მოგვაწოდეს მიმდინარე ზარის ID, ვაიგნორებთ მას და ვიღებთ რიგით წინა ზარს
-        db.get('SELECT * FROM call_details WHERE caller_number = ? AND id != ? ORDER BY id DESC LIMIT 1', [req.params.number, excludeId], (err, row) => res.json(row || null));
-    } else {
-        db.get('SELECT * FROM call_details WHERE caller_number = ? ORDER BY id DESC LIMIT 1', [req.params.number], (err, row) => res.json(row || null));
-    }
+
+app.get('/api/last-call/:number', async (req, res) => {
+    try {
+        const excludeId = req.query.excludeId;
+        let result;
+        if (excludeId) {
+            result = await pool.query('SELECT * FROM call_details WHERE caller_number = $1 AND id != $2 ORDER BY id DESC LIMIT 1', [req.params.number, excludeId]);
+        } else {
+            result = await pool.query('SELECT * FROM call_details WHERE caller_number = $1 ORDER BY id DESC LIMIT 1', [req.params.number]);
+        }
+        res.json(result.rows[0] || null);
+    } catch (err) { res.status(500).json({error: err.message}); }
 });
 
 // --- API: სტატისტიკა ---
-app.get('/api/operator-calls', (req, res) => db.all(`SELECT * FROM call_details WHERE operator_ext = ? ORDER BY id DESC LIMIT 40`, [req.query.ext], (err, rows) => res.json(rows || [])));
-app.get('/api/admin/calls', (req, res) => db.all(`SELECT * FROM call_details ORDER BY id DESC`, [], (err, rows) => res.json(rows || [])));
+app.get('/api/operator-calls', async (req, res) => {
+    try {
+        const result = await pool.query(`SELECT * FROM call_details WHERE operator_ext = $1 ORDER BY id DESC LIMIT 40`, [req.query.ext]);
+        res.json(result.rows);
+    } catch (err) { res.status(500).json({error: err.message}); }
+});
+
+app.get('/api/admin/calls', async (req, res) => {
+    try {
+        const result = await pool.query(`SELECT * FROM call_details ORDER BY id DESC`);
+        res.json(result.rows);
+    } catch (err) { res.status(500).json({error: err.message}); }
+});
+
 app.get('/api/admin/online', (req, res) => res.json(Array.from(new Set(connectedOperators.values()))));
 
 // --- API: ბანერი ---
@@ -184,45 +216,39 @@ app.post('/api/announcement', (req, res) => {
     res.json({ success: true });
 });
 
-// --- API: TEAMS (გუნდები) ---
-app.get('/api/teams', (req, res) => db.all('SELECT * FROM teams', [], (err, rows) => res.json(rows || [])));
-app.post('/api/teams', (req, res) => { db.run('INSERT INTO teams (name) VALUES (?)', [req.body.name], (err) => res.json({ success: !err })); });
-app.put('/api/teams/:id', (req, res) => { db.run('UPDATE teams SET name=? WHERE id=?', [req.body.name, req.params.id], (err) => res.json({ success: !err })); });
-app.delete('/api/teams/:id', (req, res) => { db.run('DELETE FROM teams WHERE id=?', [req.params.id], (err) => res.json({ success: !err })); });
+// --- API: TEAMS ---
+app.get('/api/teams', async (req, res) => { try { const result = await pool.query('SELECT * FROM teams'); res.json(result.rows); } catch (e) { res.json([]); } });
+app.post('/api/teams', async (req, res) => { try { await pool.query('INSERT INTO teams (name) VALUES ($1)', [req.body.name]); res.json({ success: true }); } catch (e) { res.json({ success: false }); } });
+app.put('/api/teams/:id', async (req, res) => { try { await pool.query('UPDATE teams SET name=$1 WHERE id=$2', [req.body.name, req.params.id]); res.json({ success: true }); } catch (e) { res.json({ success: false }); } });
+app.delete('/api/teams/:id', async (req, res) => { try { await pool.query('DELETE FROM teams WHERE id=$1', [req.params.id]); res.json({ success: true }); } catch (e) { res.json({ success: false }); } });
 
-// --- API: SIP EXTENSIONS (გუნდების მიბმით) ---
-app.get('/api/extensions', (req, res) => {
-    db.all(`SELECT e.*, t.name as team_name FROM extensions e LEFT JOIN teams t ON e.team_id = t.id`, [], (err, rows) => res.json(rows || []));
+// --- API: SIP EXTENSIONS ---
+app.get('/api/extensions', async (req, res) => { try { const result = await pool.query(`SELECT e.*, t.name as team_name FROM extensions e LEFT JOIN teams t ON e.team_id = t.id`); res.json(result.rows); } catch (e) { res.json([]); } });
+app.post('/api/extensions', async (req, res) => { try { await pool.query(`INSERT INTO extensions (sip_number, team_id) VALUES ($1, $2)`, [req.body.sip_number, req.body.team_id || null]); res.json({ success: true }); } catch (e) { res.status(400).json({error: "შეცდომა"}); } });
+app.put('/api/extensions/:id', async (req, res) => { try { await pool.query(`UPDATE extensions SET sip_number=$1, team_id=$2 WHERE id=$3`, [req.body.sip_number, req.body.team_id || null, req.params.id]); res.json({ success: true }); } catch (e) { res.json({ success: false }); } });
+app.delete('/api/extensions/:id', async (req, res) => { try { await pool.query(`DELETE FROM extensions WHERE id=$1`, [req.params.id]); res.json({ success: true }); } catch (e) { res.json({ success: false }); } });
+
+// --- API: კატეგორიები, თეგები, სტატუსები ---
+app.get('/api/categories', async (req, res) => { 
+    try { 
+        const result = await pool.query('SELECT * FROM categories'); 
+        let rows = result.rows;
+        if (req.query.ext) {
+            rows = rows.filter(r => !r.allowed_exts || r.allowed_exts.split(',').map(s=>s.trim()).includes(req.query.ext));
+        }
+        res.json(rows); 
+    } catch (e) { res.json([]); } 
 });
-app.post('/api/extensions', (req, res) => {
-    db.run(`INSERT INTO extensions (sip_number, team_id) VALUES (?, ?)`, [req.body.sip_number, req.body.team_id || null], function(err) {
-        if(err) return res.status(400).json({error: "შეცდომა ან ნომერი არსებობს"});
-        res.json({ success: true });
-    });
-});
-app.put('/api/extensions/:id', (req, res) => {
-    db.run(`UPDATE extensions SET sip_number=?, team_id=? WHERE id=?`, [req.body.sip_number, req.body.team_id || null, req.params.id], (err) => res.json({ success: !err }));
-});
-app.delete('/api/extensions/:id', (req, res) => { db.run(`DELETE FROM extensions WHERE id=?`, [req.params.id], (err) => res.json({ success: !err })); });
+app.post('/api/categories', async (req, res) => { try { await pool.query('INSERT INTO categories (name, allowed_exts) VALUES ($1, $2)', [req.body.name, req.body.allowed_exts]); io.emit('settings_updated'); res.json({ success: true }); } catch (e) { res.json({ success: false }); } });
+app.put('/api/categories/:id', async (req, res) => { try { await pool.query('UPDATE categories SET name=$1, allowed_exts=$2 WHERE id=$3', [req.body.name, req.body.allowed_exts, req.params.id]); io.emit('settings_updated'); res.json({ success: true }); } catch (e) { res.json({ success: false }); } });
+app.delete('/api/categories/:id', async (req, res) => { try { await pool.query('DELETE FROM categories WHERE id=$1', [req.params.id]); io.emit('settings_updated'); res.json({ success: true }); } catch (e) { res.json({ success: false }); } });
 
-// --- API: კატეგორიები (რედაქტირებით) ---
-app.get('/api/categories', (req, res) => {
-    db.all('SELECT * FROM categories', [], (err, rows) => {
-        if (!req.query.ext) return res.json(rows || []);
-        res.json((rows || []).filter(r => !r.allowed_exts || r.allowed_exts.split(',').map(s=>s.trim()).includes(req.query.ext)));
-    });
-});
-app.post('/api/categories', (req, res) => { db.run('INSERT INTO categories (name, allowed_exts) VALUES (?, ?)', [req.body.name, req.body.allowed_exts], (err) => { io.emit('settings_updated'); res.json({ success: !err }); }); });
-app.put('/api/categories/:id', (req, res) => { db.run('UPDATE categories SET name=?, allowed_exts=? WHERE id=?', [req.body.name, req.body.allowed_exts, req.params.id], (err) => { io.emit('settings_updated'); res.json({ success: !err }); }); });
-app.delete('/api/categories/:id', (req, res) => { db.run('DELETE FROM categories WHERE id=?', [req.params.id], (err) => { io.emit('settings_updated'); res.json({ success: !err }); }); });
+app.get('/api/tags', async (req, res) => { try { const result = await pool.query('SELECT * FROM tags'); res.json(result.rows); } catch (e) { res.json([]); } });
+app.post('/api/tags', async (req, res) => { try { await pool.query('INSERT INTO tags (name) VALUES ($1)', [req.body.name]); io.emit('settings_updated'); res.json({ success: true }); } catch (e) { res.json({ success: false }); } });
+app.delete('/api/tags/:id', async (req, res) => { try { await pool.query('DELETE FROM tags WHERE id=$1', [req.params.id]); io.emit('settings_updated'); res.json({ success: true }); } catch (e) { res.json({ success: false }); } });
 
-// --- API: თეგები და სტატუსები ---
-app.get('/api/tags', (req, res) => db.all('SELECT * FROM tags', [], (err, rows) => res.json(rows || [])));
-app.post('/api/tags', (req, res) => { db.run('INSERT INTO tags (name) VALUES (?)', [req.body.name], (err) => { io.emit('settings_updated'); res.json({ success: !err }); }); });
-app.delete('/api/tags/:id', (req, res) => { db.run('DELETE FROM tags WHERE id=?', [req.params.id], (err) => { io.emit('settings_updated'); res.json({ success: !err }); }); });
+app.get('/api/statuses', async (req, res) => { try { const result = await pool.query('SELECT * FROM statuses'); res.json(result.rows); } catch (e) { res.json([]); } });
+app.post('/api/statuses', async (req, res) => { try { await pool.query('INSERT INTO statuses (name) VALUES ($1)', [req.body.name]); io.emit('settings_updated'); res.json({ success: true }); } catch (e) { res.json({ success: false }); } });
+app.delete('/api/statuses/:id', async (req, res) => { try { await pool.query('DELETE FROM statuses WHERE id=$1', [req.params.id]); io.emit('settings_updated'); res.json({ success: true }); } catch (e) { res.json({ success: false }); } });
 
-app.get('/api/statuses', (req, res) => db.all('SELECT * FROM statuses', [], (err, rows) => res.json(rows || [])));
-app.post('/api/statuses', (req, res) => { db.run('INSERT INTO statuses (name) VALUES (?)', [req.body.name], (err) => { io.emit('settings_updated'); res.json({ success: !err }); }); });
-app.delete('/api/statuses/:id', (req, res) => { db.run('DELETE FROM statuses WHERE id=?', [req.params.id], (err) => { io.emit('settings_updated'); res.json({ success: !err }); }); });
-
-server.listen(PORT, () => console.log(`🚀 v2 სერვერი ჩაირთო: http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`🚀 PostgreSQL სერვერი ჩაირთო: http://localhost:${PORT}`));

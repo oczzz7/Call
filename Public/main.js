@@ -60,6 +60,8 @@ socket.on('incoming_call', async (data) => {
     document.getElementById('callModeLabel').innerText = "მიმდინარე ახალი ზარი";
     document.getElementById('callPulseIcon').style.display = "block";
     document.getElementById('callerNumberText').innerText = currentCaller;
+    // 📌 ვაახლებთ ისტორიას და ტასკების დაფას, რომ ახალი ზარი ეგრევე გამოჩნდეს სიაშიც!
+    loadOperatorHistory();
     
     clearForm();
 
@@ -315,6 +317,8 @@ window.cancelEdit = function() {
     currentCaller = "";
     document.getElementById('activeCallMode').style.display = 'none';
     document.getElementById('standbyMode').style.display = 'flex';
+    // 📌 დაზღვევისთვის: გაუქმებისას მაინც ვაახლებთ სიას
+    loadOperatorHistory();
 };
 
 // 📌 4. Jira-ს ინტეგრაცია
