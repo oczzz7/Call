@@ -73,8 +73,10 @@ io.on('connection', (socket) => {
             const result = await pool.query("SELECT * FROM extensions WHERE sip_number = $1", [ext]);
             if (result.rows.length > 0) {
                 socket.join(`ext_${ext}`);
-                connectedOperators.set(socket.id, ext);
-                io.emit('active_operators', Array.from(new Set(connectedOperators.values())));
+                // 📌 ვინახავთ ობიექტს თავისი სტატუსით (დეფოლტად ონლაინ)
+                connectedOperators.set(socket.id, { ext: ext, status: 'online' });
+                
+                io.emit('active_operators', Array.from(new Set(Array.from(connectedOperators.values()).map(o => o.ext))));
                 socket.emit('login_success', ext);
             } else {
                 socket.emit('login_error', 'SIP ნომერი არ არის დაშვებული!');
@@ -84,10 +86,20 @@ io.on('connection', (socket) => {
         }
     });
 
+    // 📌 ახალი ივენთი: სტატუსის შეცვლა (ხაზზე ვარ / გასული ვარ)
+    socket.on('change_status', (newStatus) => {
+        if (connectedOperators.has(socket.id)) {
+            let op = connectedOperators.get(socket.id);
+            op.status = newStatus;
+            connectedOperators.set(socket.id, op);
+            console.log(`[Status] ${op.ext} ახლა არის: ${newStatus}`);
+        }
+    });
+
     socket.on('disconnect', () => {
         if (connectedOperators.has(socket.id)) {
             connectedOperators.delete(socket.id);
-            io.emit('active_operators', Array.from(new Set(connectedOperators.values())));
+            io.emit('active_operators', Array.from(new Set(Array.from(connectedOperators.values()).map(o => o.ext))));
         }
     });
 });
@@ -100,7 +112,16 @@ app.get('/api/webhook/call', async (req, res) => {
     // 1. მყისიერი პასუხი ასტერისკს
     res.status(200).send('OK');
 
-    // 2. ფონური დამუშავება
+    // 2. 📌 ვამოწმებთ არის თუ არა ოპერატორი ხაზზე (მწვანე)
+    const activeOp = Array.from(connectedOperators.values()).find(op => op.ext === ext);
+    
+    // თუ საერთოდ არ არის დალოგინებული, ან სტატუსი აქვს "away" (გასული ვარ), ვაიგნორებთ და ვკლავთ პროცესს!
+    if (!activeOp || activeOp.status !== 'online') {
+        console.log(`🚫 ზარი იგნორირებულია: ${ext} არ არის ხაზზე.`);
+        return; 
+    }
+
+    // 3. ფონური დამუშავება და ბაზაში ჩაწერა (მხოლოდ მაშინ თუ ონლაინაა)
     try {
         const extCheck = await pool.query("SELECT * FROM extensions WHERE sip_number = $1", [ext]);
         if (extCheck.rows.length === 0) return;
@@ -156,8 +177,10 @@ app.post('/api/save-call', async (req, res) => {
 // --- API: JIRA ინტეგრაცია ---
 app.post('/api/jira/create', async (req, res) => {
     const { caller, client, category, comment, operator } = req.body;
-    const jiraWebhookUrl = "https://api-private.atlassian.com/automation/webhooks/jira/a/7da88a2e-121a-42b9-a1cd-dfbf6f62d611/019d6292-6c9f-7758-bf43-2ca82129d6ea";
-    const token = "bd9a3bb704852fcad05e7eddafaa80184283bc28";
+    
+    // 📌 ახლა უკვე .env ფაილიდან კითხულობს და კოდში აღარ ჩანს!
+    const jiraWebhookUrl = process.env.JIRA_WEBHOOK_URL;
+    const token = process.env.JIRA_TOKEN;
     
     try {
         const response = await fetch(jiraWebhookUrl, {
@@ -199,14 +222,17 @@ app.get('/api/operator-calls', async (req, res) => {
     } catch (err) { res.status(500).json({error: err.message}); }
 });
 
+// --- API: სტატისტიკა ადმინისთვის (შეზღუდული მოცულობით) ---
 app.get('/api/admin/calls', async (req, res) => {
     try {
-        const result = await pool.query(`SELECT * FROM call_details ORDER BY id DESC`);
+        // 📌 დამატებულია LIMIT 2000, რათა ბაზა არ გაჭედოს, თუ 10,000+ ზარია
+        const result = await pool.query(`SELECT * FROM call_details ORDER BY id DESC LIMIT 2000`);
         res.json(result.rows);
     } catch (err) { res.status(500).json({error: err.message}); }
 });
 
-app.get('/api/admin/online', (req, res) => res.json(Array.from(new Set(connectedOperators.values()))));
+// 📌 განახლებული admin/online API
+app.get('/api/admin/online', (req, res) => res.json(Array.from(new Set(Array.from(connectedOperators.values()).map(o => o.ext)))));
 
 // --- API: ბანერი ---
 let globalAnnouncementText = "";

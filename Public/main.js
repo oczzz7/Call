@@ -1,3 +1,24 @@
+function escapeHTML(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// 📌 ეს ფუნქცია მთლიან ობიექტს რეცხავს ვირუსული ტექსტებისგან
+function sanitizeCallObj(call) {
+    let safeCall = { ...call }; 
+    if (safeCall.caller_number) safeCall.caller_number = escapeHTML(safeCall.caller_number);
+    if (safeCall.client_name) safeCall.client_name = escapeHTML(safeCall.client_name);
+    if (safeCall.comment) safeCall.comment = escapeHTML(safeCall.comment);
+    if (safeCall.category) safeCall.category = escapeHTML(safeCall.category);
+    if (safeCall.tag) safeCall.tag = escapeHTML(safeCall.tag);
+    return safeCall;
+}
+
 const socket = io();
 let currentExt = "";
 let currentCaller = "";
@@ -31,7 +52,9 @@ socket.on('login_success', (ext) => {
     document.getElementById('loginBlock').style.display = 'none';
     document.getElementById('workspace').style.display = 'flex';
     document.getElementById('myExt').innerText = currentExt;
-    
+    currentStatus = localStorage.getItem('operatorStatus') || 'online';
+    applyStatusVisuals(currentStatus);
+    socket.emit('change_status', currentStatus);
     loadDynamicOptions();
     loadOperatorHistory();
 });
@@ -48,11 +71,14 @@ window.logoutOperator = function() {
 
 // 📌 1. ზარის შემოსვლა (ახალი ლოგიკით)
 socket.on('incoming_call', async (data) => {
+    // გაფილტვრა შემოსვლისთანავე
+    const safeData = sanitizeCallObj(data);
+
     if (currentCaller && document.getElementById('activeCallMode').style.display === 'block') {
         saveCallRecord(false); 
     }
 
-    currentCaller = data.caller_number;
+    currentCaller = safeData.caller_number;
     
     document.getElementById('standbyMode').style.display = 'none';
     document.getElementById('activeCallMode').style.display = 'block';
@@ -60,16 +86,14 @@ socket.on('incoming_call', async (data) => {
     document.getElementById('callModeLabel').innerText = "მიმდინარე ახალი ზარი";
     document.getElementById('callPulseIcon').style.display = "block";
     document.getElementById('callerNumberText').innerText = currentCaller;
-    // 📌 ვაახლებთ ისტორიას და ტასკების დაფას, რომ ახალი ზარი ეგრევე გამოჩნდეს სიაშიც!
-    loadOperatorHistory();
     
+    loadOperatorHistory();
     clearForm();
 
-    if (data.call_id) {
-        document.getElementById('currentEditId').value = data.call_id;
+    if (safeData.call_id) {
+        document.getElementById('currentEditId').value = safeData.call_id;
     }
 
-    // 📌 ფორმაში სახელი რჩება ცარიელი, რომ თავიდან შეივსოს საჭიროებისამებრ
     const nameInput = document.getElementById('clientNameInput');
     nameInput.disabled = false;
     nameInput.value = '';
@@ -79,18 +103,20 @@ socket.on('incoming_call', async (data) => {
     try {
         const res = await fetch(`/api/client/${currentCaller}`);
         const client = await res.json();
-        if (client.name) savedName = client.name;
+        // 📌 ვფილტრავთ კლიენტის სახელს
+        if (client.name) savedName = escapeHTML(client.name);
     } catch (e) {}
 
     // 📌 წინა ზარის დეტალების შემოწმება და ყვითელ ნოუთში გამოტანა
     try {
-        // ვაგზავნით მიმდინარე ზარის ID-ს, რათა ბექენდმა ამოიღოს ნამდვილად წინა ზარი!
-        const lcRes = await fetch(`/api/last-call/${currentCaller}?excludeId=${data.call_id || ''}`);
-        const lastCall = await lcRes.json();
+        const lcRes = await fetch(`/api/last-call/${currentCaller}?excludeId=${safeData.call_id || ''}`);
+        let lastCall = await lcRes.json();
         const banner = document.getElementById('lastCallInfoBanner');
         
-        // თუ ისტორია მოიძებნა
         if (lastCall) {
+            // 📌 ვფილტრავთ წინა ზარის ობიექტს ეკრანზე გამოტანამდე
+            lastCall = sanitizeCallObj(lastCall);
+
             document.getElementById('lcName').innerText = savedName;
             document.getElementById('lcDate').innerText = `${lastCall.date} ${lastCall.time}`;
             document.getElementById('lcOp').innerText = lastCall.operator_ext;
@@ -179,7 +205,10 @@ window.loadOperatorHistory = async function() {
     if (!currentExt) return;
     try {
         const response = await fetch(`/api/operator-calls?ext=${currentExt}`);
-        currentOperatorCalls = await response.json(); 
+        const rawCalls = await response.json(); 
+        
+        // 📌 ვფილტრავთ ისტორიას ეკრანზე გამოჩენამდე!
+        currentOperatorCalls = rawCalls.map(c => sanitizeCallObj(c));
 
         renderOperatorHistory();
         
@@ -217,7 +246,6 @@ window.loadOperatorHistory = async function() {
     } catch (e) { console.error(e); }
 };
 
-// 📌 ფილტრაციის ფუნქცია (კატეგორია და სტატუსი)
 window.renderOperatorHistory = function() {
     const catFilter = document.getElementById('historyFilter').value;
     const statFilter = document.getElementById('statusFilter').value;
@@ -308,8 +336,9 @@ window.editTask = async function(id) {
         const res = await fetch(`/api/client/${call.caller_number}`);
         const client = await res.json();
         const nameInput = document.getElementById('clientNameInput');
-        nameInput.value = client.name || '';
-        nameInput.disabled = false; // რედაქტირებისას სახელის შეცვლაც შეგეძლოს
+        // 📌 ვფილტრავთ კლიენტის სახელს რედაქტირების დროსაც
+        nameInput.value = escapeHTML(client.name || '');
+        nameInput.disabled = false; 
     } catch(e) {}
 };
 
@@ -317,7 +346,6 @@ window.cancelEdit = function() {
     currentCaller = "";
     document.getElementById('activeCallMode').style.display = 'none';
     document.getElementById('standbyMode').style.display = 'flex';
-    // 📌 დაზღვევისთვის: გაუქმებისას მაინც ვაახლებთ სიას
     loadOperatorHistory();
 };
 
@@ -397,16 +425,42 @@ window.loadDynamicOptions = async function() {
         const tags = await tagRes.json();
         const statuses = await statusRes.json();
 
-        document.getElementById('wrapCategory').innerHTML = '<option value="" disabled selected>აირჩიეთ კატეგორია</option>' + categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
-        document.getElementById('tagGroup').innerHTML = tags.map(t => `<div class="chip tag-chip" onclick="selectTag(this, '${t.name}')">${t.name}</div>`).join('');
-        document.getElementById('wrapTaskStatus').innerHTML = statuses.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+        document.getElementById('wrapCategory').innerHTML = '<option value="" disabled selected>აირჩიეთ კატეგორია</option>' + categories.map(c => `<option value="${escapeHTML(c.name)}">${escapeHTML(c.name)}</option>`).join('');
+        document.getElementById('tagGroup').innerHTML = tags.map(t => `<div class="chip tag-chip" onclick="selectTag(this, '${escapeHTML(t.name)}')">${escapeHTML(t.name)}</div>`).join('');
+        document.getElementById('wrapTaskStatus').innerHTML = statuses.map(s => `<option value="${escapeHTML(s.name)}">${escapeHTML(s.name)}</option>`).join('');
         
-        // 📌 ფილტრის სელექტების განახლება
-        document.getElementById('historyFilter').innerHTML = '<option value="all">ყველა კატეგორია</option>' + categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
-        document.getElementById('statusFilter').innerHTML = '<option value="all">ყველა სტატუსი</option>' + statuses.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+        document.getElementById('historyFilter').innerHTML = '<option value="all">ყველა კატეგორია</option>' + categories.map(c => `<option value="${escapeHTML(c.name)}">${escapeHTML(c.name)}</option>`).join('');
+        document.getElementById('statusFilter').innerHTML = '<option value="all">ყველა სტატუსი</option>' + statuses.map(s => `<option value="${escapeHTML(s.name)}">${escapeHTML(s.name)}</option>`).join('');
     } catch (e) {}
 }
 
+let currentStatus = localStorage.getItem('operatorStatus') || 'online';
+
+function applyStatusVisuals(status) {
+    const btn = document.getElementById('statusBtn');
+    if (!btn) return;
+    
+    if (status === 'away') {
+        btn.innerHTML = '🟡 გასული ვარ';
+        btn.style.background = 'orange';
+    } else {
+        btn.innerHTML = '🟢 ხაზზე ვარ';
+        btn.style.background = 'green';
+    }
+}
+
+function toggleStatus() {
+    if (currentStatus === 'online') {
+        currentStatus = 'away';
+    } else {
+        currentStatus = 'online';
+    }
+    
+    localStorage.setItem('operatorStatus', currentStatus);
+    
+    applyStatusVisuals(currentStatus);
+    socket.emit('change_status', currentStatus);
+}
 socket.on('settings_updated', loadDynamicOptions);
 
 window.initiateCall = function(number) {
