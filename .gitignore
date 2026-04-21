@@ -1,4 +1,4 @@
-./node_modules/
-*.db
+node_modules/
 .env
-./callcenter_v2.db
+*.db
+callcenter_v2.db
